@@ -372,14 +372,25 @@ async function compositeWithAlpha(rgbBlob, maskBlob, width, height, cleanEdges =
     for(let y=0;y<height;y++){
       for(let x=0;x<width;x++){
         const i=(y*width+x)*4, a=alphaAt(x,y);
-        if(a < 34){ pixels.data[i]=0; pixels.data[i+1]=0; pixels.data[i+2]=0; pixels.data[i+3]=0; continue; }
-        if(a < 238){
+        if(a < 18){ pixels.data[i]=0; pixels.data[i+1]=0; pixels.data[i+2]=0; pixels.data[i+3]=0; continue; }
+        if(a < 245){
           let bestA=a,bx=x,by=y;
-          const n=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
-          for(const [xx,yy] of n){ if(xx<0||yy<0||xx>=width||yy>=height) continue; const aa=alphaAt(xx,yy); if(aa>bestA){bestA=aa;bx=xx;by=yy;} }
-          if(bestA > a+10){ const bi=(by*width+bx)*4; pixels.data[i]=src[bi]; pixels.data[i+1]=src[bi+1]; pixels.data[i+2]=src[bi+2]; }
-          pixels.data[i+3] = a < 150 ? Math.round(a*.42) : a < 215 ? Math.round(a*.68) : Math.round(a*.86);
+          for(let oy=-1;oy<=1;oy++) for(let ox=-1;ox<=1;ox++){
+            if(!ox && !oy) continue;
+            const xx=x+ox, yy=y+oy;
+            if(xx<0||yy<0||xx>=width||yy>=height) continue;
+            const aa=alphaAt(xx,yy);
+            if(aa>bestA){bestA=aa;bx=xx;by=yy;}
+          }
+          if(bestA > a+12){
+            const bi=(by*width+bx)*4;
+            const pull=Math.min(1, (bestA-a)/110);
+            pixels.data[i]=Math.round(src[i]*(1-pull)+src[bi]*pull);
+            pixels.data[i+1]=Math.round(src[i+1]*(1-pull)+src[bi+1]*pull);
+            pixels.data[i+2]=Math.round(src[i+2]*(1-pull)+src[bi+2]*pull);
+          }
         }
+        pixels.data[i+3]=a;
       }
     }
     ctx.putImageData(pixels,0,0); matte.width=1; matte.height=1;
@@ -435,15 +446,51 @@ function setTool(tool){ activeTool=tool; document.querySelectorAll(".tool-choice
 
 function chooseRemovalModel(){ return navigator.gpu ? "isnet_fp16" : "isnet_quint8"; }
 
+async function maskNeedsPrecisionPass(maskBlob){
+  const c = await blobToCanvas(maskBlob);
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  const d = ctx.getImageData(0,0,c.width,c.height).data;
+  const sx = Math.max(1, Math.floor(c.width / 96));
+  const sy = Math.max(1, Math.floor(c.height / 96));
+  let samples = 0, uncertain = 0, border = 0, foreground = 0;
+  for(let y=0;y<c.height;y+=sy){
+    for(let x=0;x<c.width;x+=sx){
+      const a=d[(y*c.width+x)*4+3]; samples++;
+      if(a>245) foreground++;
+      if(a>20 && a<235) uncertain++;
+      if((x < c.width*.035 || x > c.width*.965 || y < c.height*.035 || y > c.height*.965) && a>32) border++;
+    }
+  }
+  c.width=1;c.height=1;
+  const fg=foreground/Math.max(samples,1), soft=uncertain/Math.max(samples,1), edge=border/Math.max(samples,1);
+  return (edge > .012 && fg < .86) || soft > .22 || fg > .94;
+}
+
 async function runBackgroundRemoval(blob, token) {
   const primary = chooseRemovalModel();
   const config = { model: primary, device: navigator.gpu ? "gpu" : "cpu", proxyToWorker: true, output: { format: "image/png", type: "mask" },
     progress: (key,current,total) => { if(key.includes("inference")){ const pct=Math.round((current/Math.max(total,1))*100); $("signalMask").textContent=`AI ${pct}%`; } } };
-  try { return await removeBackground(blob, config); }
-  catch (err) {
+  try {
+    const first = await removeBackground(blob, config);
+    if(token !== jobToken) throw new DOMException("Cancelled", "AbortError");
+    if(primary === "isnet_fp16" && await maskNeedsPrecisionPass(first)) {
+      $("processSub").textContent = "This image has a difficult edge · running a precision matte pass…";
+      $("signalMask").textContent = "precision pass";
+      try {
+        const precision = await removeBackground(blob, { ...config, model: "isnet", device: "gpu" });
+        if(token !== jobToken) throw new DOMException("Cancelled", "AbortError");
+        return { blob: precision, model: "isnet", precision: true };
+      } catch (precisionError) {
+        console.warn("Precision pass unavailable; keeping the fast matte.", precisionError);
+        return { blob: first, model: primary, precision: false };
+      }
+    }
+    return { blob: first, model: primary, precision: false };
+  } catch (err) {
     if(primary !== "isnet_fp16") throw err;
     $("processSub").textContent = "GPU model hit a device limit · switching to the safe CPU model…";
-    return await removeBackground(blob, { ...config, model: "isnet_quint8", device: "cpu" });
+    const fallback = await removeBackground(blob, { ...config, model: "isnet_quint8", device: "cpu" });
+    return { blob: fallback, model: "isnet_quint8", precision: false };
   }
 }
 
@@ -468,7 +515,10 @@ async function start(f) {
     setStage(2); $("processTitle").textContent = activeTool === "enhance" ? "Preparing detail reconstruction…" : "Mapping your subject…"; $("processSub").textContent = activeTool === "remove" ? "High-quality foreground segmentation is building the transparency matte." : "Building a clean subject matte before the next stage."; await nextFrame();
     if (activeTool !== "enhance") {
       $("signalMask").textContent = navigator.gpu ? "precision GPU" : "safe CPU";
-      alphaBlob = await runBackgroundRemoval(processingBlob, token);
+      const removal = await runBackgroundRemoval(processingBlob, token);
+      alphaBlob = removal.blob;
+      window.__cutoutModelUsed = removal.model;
+      window.__cutoutPrecisionPass = removal.precision;
       if (token !== jobToken) return;
       $("previewState").textContent = "AI matte generated · revealing cutout";
       if (activeTool === "remove") {
@@ -514,7 +564,7 @@ async function start(f) {
 
     setStage(activeTool === "remove" ? 4 : 4); $("processTitle").textContent = "Refining the cutout edge…"; $("processSub").textContent = "Cleaning the matte and preserving soft subject boundaries."; await nextFrame();
     const resizedMask = await resizeAlphaBlob(alphaBlob, enhanced.width, enhanced.height);
-    const refinedMask = activeTool === "remove" ? resizedMask : await refineAlphaMask(resizedMask);
+    const refinedMask = await refineAlphaMask(resizedMask, activeTool === "remove");
     await setupMaskEditor(enhanced.blob, refinedMask);
     URL.revokeObjectURL(enhancedUrl);
     await yieldToBrowser();
@@ -526,7 +576,7 @@ async function start(f) {
     const info = await fileInfo(resultBlob); clearInterval(timerInt); setStage(5);
     $("stats").textContent = `${elapsed.toFixed(1)}s · ${info.width} × ${info.height}px · ${activeTool === "remove" ? "AI cutout" : "AI 2×"}`;
     $("qualityTitle").textContent = activeTool === "remove" ? "Precision AI background removal" : "Swin2SR neural reconstruction · 2×";
-    $("qualityDetail").textContent = activeTool === "remove" ? `Foreground matte generated with ${chooseRemovalModel()} and refined alpha compositing.` : "Neural reconstruction with transparent alpha compositing.";
+    $("qualityDetail").textContent = activeTool === "remove" ? `Foreground matte generated with ${window.__cutoutModelUsed || chooseRemovalModel()}${window.__cutoutPrecisionPass ? " precision pass" : ""} and refined alpha compositing.` : "Neural reconstruction with transparent alpha compositing.";
     $("qualityBadge").innerHTML = activeTool === "remove" ? "<span>✓</span> cutout ready" : "<span>✓</span> neural result";
     $("sourceInfo").textContent = `${f.name} · ${prepared.original.width} × ${prepared.original.height}px · ${(f.size / 1024 / 1024).toFixed(2)} MB`;
     hide("processing"); show("editor"); setPreviewMode("split"); applyZoom();
@@ -538,27 +588,29 @@ async function start(f) {
 
 async function createOpaqueMask(w,h){ const c=document.createElement("canvas"); c.width=w;c.height=h; const x=c.getContext("2d"); x.fillStyle="#fff";x.fillRect(0,0,w,h); const out=await canvasToBlob(c); c.width=1;c.height=1; return out; }
 
-async function refineAlphaMask(blob){
+async function refineAlphaMask(blob, aggressive = false){
   const c=await blobToCanvas(blob); const w=c.width,h=c.height;
   const ctx=c.getContext("2d",{willReadFrequently:true});
   const src=ctx.getImageData(0,0,w,h).data;
   const out=document.createElement("canvas"); out.width=w; out.height=h;
   const ox=out.getContext("2d",{willReadFrequently:true}); const dst=ox.createImageData(w,h);
   const aAt=(x,y)=>src[(y*w+x)*4+3];
-  for(let y=0;y<h;y++){ for(let x=0;x<w;x++){
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
     const i=(y*w+x)*4, a=aAt(x,y);
-    dst.data[i]=255; dst.data[i+1]=255; dst.data[i+2]=255;
-    if(a<28){dst.data[i+3]=0;continue;}
-    let localMin=a, localMax=a;
+    dst.data[i]=dst.data[i+1]=dst.data[i+2]=255;
+    if(a<18){dst.data[i+3]=0;continue;}
+    let localMax=a, localMin=a;
     for(let oy=-1;oy<=1;oy++) for(let oxi=-1;oxi<=1;oxi++){
       const xx=x+oxi,yy=y+oy; if(xx<0||yy<0||xx>=w||yy>=h) continue;
-      const aa=aAt(xx,yy); localMin=Math.min(localMin,aa); localMax=Math.max(localMax,aa);
+      const aa=aAt(xx,yy); localMax=Math.max(localMax,aa); localMin=Math.min(localMin,aa);
     }
     let clean=a;
-    if(a<245 && localMax-a>16) clean=Math.round(a*.64+localMin*.36);
-    if(clean<42) clean=0;
+    if(localMax>=245 && a<90) clean=Math.round(a*(aggressive?.16:.28));
+    else if(localMax>=245 && a<170) clean=Math.round(a*(aggressive?.42:.58));
+    else if(localMax-a>45 && a<225) clean=Math.round(a*(aggressive?.72:.82));
+    if(clean<24) clean=0;
     dst.data[i+3]=Math.max(0,Math.min(255,clean));
-  }}
+  }
   ox.putImageData(dst,0,0); c.width=1;c.height=1; const outBlob=await canvasToBlob(out); out.width=1;out.height=1; return outBlob;
 }
 

@@ -91,17 +91,17 @@ app.innerHTML = `
     <section id="editor" class="editor hidden">
       <div class="studio-toolbar liquid-glass" role="toolbar" aria-label="Editing tools">
         <div class="studio-tool-group">
-          <button class="studio-tool active" data-editor-tool="cutout" type="button"><span>✦</span><b>Cutout</b></button>
-          <button class="studio-tool" data-editor-tool="background" type="button"><span>◒</span><b>Background</b></button>
-          <button class="studio-tool" data-editor-tool="effects" type="button"><span>●</span><b>Effects</b></button>
-          <button class="studio-tool" data-editor-tool="adjust" type="button"><span>◧</span><b>Adjust</b></button>
-          <button class="studio-tool" data-editor-tool="design" type="button"><span>◫</span><b>Design</b></button>
+          <button class="studio-tool active" data-editor-tool="cutout" type="button"><span>✦</span><b>Cutout</b><small>fix edges</small></button>
+          <button class="studio-tool" data-editor-tool="background" type="button"><span>◒</span><b>Background</b><small>change scene</small></button>
+          <button class="studio-tool" data-editor-tool="effects" type="button"><span>●</span><b>Effects</b><small>shadow & blur</small></button>
+          <button class="studio-tool" data-editor-tool="adjust" type="button"><span>◧</span><b>Adjust</b><small>light & color</small></button>
+          <button class="studio-tool" data-editor-tool="design" type="button"><span>◫</span><b>Design</b><small>presentation</small></button>
         </div>
         <div class="studio-actions">
-          <button id="compareTool" class="studio-icon" type="button" aria-label="Compare original and result">◫</button>
+          <button id="compareTool" class="studio-action labeled" type="button" aria-label="Compare original and result"><span>◫</span><b>Compare</b></button>
           <button id="undoTool" class="studio-icon" type="button" aria-label="Undo mask edit">↶</button>
           <button id="redoTool" class="studio-icon" type="button" aria-label="Redo mask edit">↷</button>
-          <button id="toolbarDownload" class="toolbar-download primary" type="button">Download <span>⌄</span></button>
+          <button id="toolbarDownload" class="toolbar-download primary" type="button">Export <span>↓</span></button>
         </div>
       </div>
       <div id="toolDrawer" class="tool-drawer liquid-glass hidden" aria-live="polite">
@@ -123,7 +123,7 @@ app.innerHTML = `
           </div>
         </div>
         <div id="designPanel" class="drawer-panel hidden">
-          <div><span class="eyebrow">DESIGN</span><strong>Choose the presentation</strong><small>Pick a background without opening a large settings panel.</small></div>
+          <div><span class="eyebrow">DESIGN</span><strong>Choose the presentation</strong><small>These options only change how your final image is shown/exported.</small></div>
           <div class="design-pills">
             <button class="design-choice active" data-design-bg="checker" type="button">Transparent</button>
             <button class="design-choice" data-design-bg="white" type="button">White</button>
@@ -131,17 +131,18 @@ app.innerHTML = `
             <button class="design-choice" data-design-bg="gradient" type="button">Gradient</button>
             <button class="design-choice" data-design-bg="blur" type="button">Original blur</button>
           </div>
+          <label class="export-toggle-card"><span><b>Watermark</b><small>Add a small “Cutout Pro” mark to exported images.</small></span><input id="watermarkToggle" type="checkbox"><i></i><em>OFF</em></label>
         </div>
       </div>
       <div class="editor-head"><div><span class="glass-chip"><b>RESTORED</b><span>result ready</span></span><h2>Your cutout is ready.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
       <div class="canvas-card liquid-glass">
-        <div class="canvas-head"><div class="tabs"><button class="tab active" data-mode="result">Enhanced</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Compare</button></div><div class="zoom"><button id="zoomOut">−</button><span id="zoomText">100%</span><button id="zoomIn">＋</button></div></div>
+        <div class="canvas-head"><div class="canvas-title"><b>Preview</b><span id="viewHint">Your final cutout</span></div><div class="tabs"><button class="tab active" data-mode="result">Final</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Side by side</button></div><div class="zoom"><button id="zoomOut" aria-label="Zoom out">−</button><span id="zoomText">100%</span><button id="zoomIn" aria-label="Zoom in">＋</button></div></div>
         <div id="preview" class="preview checker"><div id="splitPane"><img id="previewImg" alt="AI enhanced result"></div><img id="originalImg" class="original-img" alt="Original image"></div>
       </div>
       <div class="result-ribbon liquid-glass"><div class="ribbon-icon">✦</div><div><span class="eyebrow">RESTORATION REPORT</span><strong id="qualityTitle">Swin2SR neural reconstruction · 2×</strong><small id="qualityDetail">Neural reconstruction with transparent alpha compositing.</small></div><div id="qualityBadge" class="quality-badge"><span>✓</span> neural result</div></div>
       <div class="quick-actions liquid-glass">
         <div><span class="eyebrow">QUICK FINISH</span><h3>Ready to use</h3><p>Most images are finished here. Use advanced tools only when you need them.</p></div>
-        <div class="quick-buttons"><button class="quick-btn active" data-quick-bg="checker">Transparent</button><button class="quick-btn" data-quick-bg="white">White</button><button class="quick-btn" data-quick-bg="dark">Dark</button><button id="download" class="primary liquid-button">Preview & download <span>↗</span></button></div>
+        <div class="quick-buttons"><button class="quick-btn active" data-quick-bg="checker">Transparent</button><button class="quick-btn" data-quick-bg="white">White</button><button class="quick-btn" data-quick-bg="dark">Dark</button><button class="quick-btn quick-secondary" id="watermarkQuick" type="button">Watermark <span>OFF</span></button><button id="download" class="primary liquid-button">Preview & download <span>↗</span></button></div>
       </div>
       <details class="advanced-section liquid-glass" id="advancedBackground">
         <summary><span><b>Background Studio</b><small>Colors, custom image, blur and shadow</small></span><i>＋</i></summary>
@@ -176,7 +177,7 @@ app.innerHTML = `
       <p class="disclaimer">Super-resolution reconstructs plausible fine detail; it cannot recover missing information with certainty. Cutout Pro uses neural reconstruction rather than ordinary browser enlargement.</p>
     </section>
   </main>
-  <div id="exportPreview" class="export-preview hidden" role="dialog" aria-modal="true" aria-label="Export preview"><div class="export-backdrop"></div><div class="export-dialog liquid-glass"><div class="export-head"><div><span class="eyebrow">EXPORT PREVIEW</span><h2>See it before it leaves.</h2><p>Inspect transparency, scale and output quality before downloading.</p></div><button id="exportClose" class="icon-btn liquid-control" aria-label="Close export preview">×</button></div><div class="export-stage checker"><img id="exportImage" alt="Final export preview"></div><div class="export-meta"><div><b id="exportDimensions">—</b><span>output size</span></div><div><b id="exportFormat">PNG</b><span>format</span></div><div><b id="exportTransparency">Alpha</b><span>transparency</span></div></div><div class="export-actions"><button id="exportCancel" class="ghost liquid-control">Keep editing</button><button id="exportConfirm" class="primary liquid-button">Download <span>↓</span></button></div></div></div>
+  <div id="exportPreview" class="export-preview hidden" role="dialog" aria-modal="true" aria-label="Export preview"><div class="export-backdrop"></div><div class="export-dialog liquid-glass"><div class="export-head"><div><span class="eyebrow">EXPORT PREVIEW</span><h2>See it before it leaves.</h2><p>Inspect transparency, scale and output quality before downloading.</p></div><button id="exportClose" class="icon-btn liquid-control" aria-label="Close export preview">×</button></div><div class="export-stage checker"><img id="exportImage" alt="Final export preview"></div><div class="export-meta"><div><b id="exportDimensions">—</b><span>output size</span></div><div><b id="exportFormat">PNG</b><span>format</span></div><div><b id="exportTransparency">Alpha</b><span>transparency</span></div></div><div class="export-options"><label class="export-toggle-card compact"><span><b>Watermark</b><small>Off by default</small></span><input id="exportWatermarkToggle" type="checkbox"><i></i><em>OFF</em></label></div><div class="export-actions"><button id="exportCancel" class="ghost liquid-control">Keep editing</button><button id="exportConfirm" class="primary liquid-button">Download <span>↓</span></button></div></div></div>
   <footer>Cutout Pro · image restoration studio · built around the pixels</footer>
 </div>`
 
@@ -184,6 +185,7 @@ const $ = id => document.getElementById(id);
 let file, processingBlob, originalUrl, resultUrl, resultBlob, alphaBlob;
 let elapsed = 0, timerInt, zoom = 1, busy = false, jobToken = 0, activeTool = "remove", exportFormat = "png";
 let backgroundMode = "checker", customBackgroundBlob = null, customBackgroundUrl = null, renderedExportBlob = null, renderedPreviewUrl = null;
+let watermarkEnabled = false;
 let shadowEnabled = false, shadowStrength = 18, backgroundBlur = 14;
 let adjustBrightness = 100, adjustContrast = 100, adjustSaturation = 100;
 let maskHistory = [], maskRedo = [];
@@ -694,6 +696,14 @@ async function renderBackgroundComposite() {
     x.save(); x.filter=`blur(${Math.max(2,Math.round(w*.006))}px)`; x.globalAlpha=.55; x.drawImage(sc,Math.round(w*.018),Math.round(h*.035)); x.restore(); sc.width=1;sc.height=1;
   }
   x.save(); x.filter=`brightness(${adjustBrightness}%) contrast(${adjustContrast}%) saturate(${adjustSaturation}%)`; x.drawImage(subject,0,0); x.restore(); subject.close();
+  if(watermarkEnabled){
+    const fontSize=Math.max(14,Math.round(Math.min(w,h)*0.026));
+    const pad=Math.max(12,Math.round(Math.min(w,h)*0.028));
+    x.save(); x.font=`600 ${fontSize}px Inter, system-ui, sans-serif`; x.textAlign="right"; x.textBaseline="bottom"; x.globalAlpha=.72;
+    const label="Cutout Pro"; const tw=x.measureText(label).width;
+    x.fillStyle="rgba(255,255,255,.72)"; x.beginPath(); x.roundRect(w-pad-tw-18,h-pad-fontSize-10,tw+18,fontSize+10,10); x.fill();
+    x.fillStyle="rgba(35,45,52,.78)"; x.fillText(label,w-pad-9,h-pad-7); x.restore();
+  }
   renderedExportBlob=await canvasToBlob(c); c.width=1;c.height=1;
   revoke(renderedPreviewUrl); renderedPreviewUrl=URL.createObjectURL(renderedExportBlob);
   $("previewImg").src=renderedPreviewUrl;
@@ -704,7 +714,7 @@ async function updateBackgroundMode(mode){ backgroundMode=mode; document.querySe
 function showError(message) {
   hide("editor"); show("processing"); $("processBadge").textContent = "SAFE RETRY"; $("processTitle").textContent = "The image was not completed"; $("processSub").textContent = message; $("tip").textContent = "Cutout Pro stopped the job instead of continuing to consume memory. Try a smaller image if the browser reports a resource limit."; $("bar").style.width = "0%";
 }
-function resetToUpload() { jobToken++; busy = false; clearInterval(timerInt); revoke(resultUrl); resultUrl = null; revoke(renderedPreviewUrl); renderedPreviewUrl=null; renderedExportBlob=null; revoke(customBackgroundUrl); customBackgroundUrl=null; customBackgroundBlob=null; backgroundMode="checker"; shadowEnabled=false; backgroundBlur=14; shadowStrength=18; revoke(originalUrl); originalUrl = null; processingBlob = null; alphaBlob = null; enhancedSourceBlob = null; maskOriginalBlob = null; maskCanvas = null; maskCtx = null; maskLayerCanvas = null; maskLayerCtx = null; $("fileInput").value = ""; hide("processing"); hide("editor"); show("uploadView"); }
+function resetToUpload() { watermarkEnabled=false; jobToken++; busy = false; clearInterval(timerInt); revoke(resultUrl); resultUrl = null; revoke(renderedPreviewUrl); renderedPreviewUrl=null; renderedExportBlob=null; revoke(customBackgroundUrl); customBackgroundUrl=null; customBackgroundBlob=null; backgroundMode="checker"; shadowEnabled=false; backgroundBlur=14; shadowStrength=18; revoke(originalUrl); originalUrl = null; processingBlob = null; alphaBlob = null; enhancedSourceBlob = null; maskOriginalBlob = null; maskCanvas = null; maskCtx = null; maskLayerCanvas = null; maskLayerCtx = null; $("fileInput").value = ""; hide("processing"); hide("editor"); show("uploadView"); }
 function applyZoom() { $("previewImg").style.transform = `scale(${zoom})`; $("originalImg").style.transform = `scale(${zoom})`; $("zoomText").textContent = Math.round(zoom * 100) + "%"; }
 
 $("choose").onclick = () => !busy && $("fileInput").click(); document.querySelectorAll(".tool-choice").forEach(b=>b.onclick=()=>setTool(b.dataset.tool)); setTool("remove");
@@ -715,7 +725,7 @@ $("processingNew").onclick = resetToUpload;
 $("dropzone").addEventListener("drop", e => { if (busy) return; const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) start(f); });
 
 document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(b=>b.onclick=async()=>{ document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(x=>x.classList.remove("active")); b.classList.add("active"); await updateBackgroundMode(b.dataset.quickBg); });
-function setPreviewMode(m){ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===m)); $("originalImg").style.display=m==="original"||m==="split"?"block":"none"; $("splitPane").style.display=m==="original"?"none":"block"; $("preview").classList.toggle("split",m==="split"); $("preview").dataset.mode=m; applyZoom(); }
+function setPreviewMode(m){ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===m)); $("originalImg").style.display=m==="original"||m==="split"?"block":"none"; $("splitPane").style.display=m==="original"?"none":"block"; $("preview").classList.toggle("split",m==="split"); $("preview").dataset.mode=m; $("viewHint").textContent=m==="result"?"Your final cutout":m==="original"?"The uploaded photo":"Final vs original"; applyZoom(); }
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>setPreviewMode(b.dataset.mode));
 $("zoomIn").onclick = () => { zoom = Math.min(2, zoom + .1); applyZoom(); }; $("zoomOut").onclick = () => { zoom = Math.max(.5, zoom - .1); applyZoom(); };
 $("new").onclick = resetToUpload;
@@ -762,3 +772,15 @@ $("effectShadowStrength").oninput=e=>{$("shadowStrength").value=e.target.value;s
 $("effectBlurStrength").oninput=e=>{$("blurStrength").value=e.target.value;backgroundBlur=Number(e.target.value);$("effectBlurValue").textContent=e.target.value+" px";if(backgroundMode==="blur"||backgroundMode==="custom")renderBackgroundComposite();};
 document.querySelectorAll(".design-choice").forEach(b=>b.onclick=async()=>{document.querySelectorAll(".design-choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");await updateBackgroundMode(b.dataset.designBg);});
 $("theme").onclick = () => document.documentElement.classList.toggle("dark");
+
+function syncWatermarkUI(){
+  const on=!!watermarkEnabled;
+  const wt=$("watermarkToggle"), ew=$("exportWatermarkToggle"), q=$("watermarkQuick");
+  if(wt) wt.checked=on; if(ew) ew.checked=on;
+  if(q){ q.classList.toggle("active",on); q.querySelector("span").textContent=on?"ON":"OFF"; }
+  document.querySelectorAll(".export-toggle-card em").forEach(e=>e.textContent=on?"ON":"OFF");
+}
+$("watermarkToggle").onchange=e=>{watermarkEnabled=e.target.checked;syncWatermarkUI();renderBackgroundComposite();};
+$("exportWatermarkToggle").onchange=e=>{watermarkEnabled=e.target.checked;syncWatermarkUI();renderBackgroundComposite();openExportPreview();};
+$("watermarkQuick").onclick=()=>{watermarkEnabled=!watermarkEnabled;syncWatermarkUI();renderBackgroundComposite();};
+syncWatermarkUI();

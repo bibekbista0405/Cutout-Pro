@@ -41,11 +41,7 @@ let runtimeLabel = "";
 function withTimeout(promise, ms, message) {
   let timer;
   const guarded = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      const err = new Error(message);
-      err.fatal = true;
-      reject(err);
-    }, ms);
+    timer = setTimeout(() => reject(new Error(message)), ms);
   });
   return Promise.race([promise, guarded]).finally(() => clearTimeout(timer));
 }
@@ -90,6 +86,6 @@ self.onmessage = async e => {
       return;
     }
   } catch (err) {
-    postMessage({ id, type: "error", message: err?.message || String(err), fatal: Boolean(err?.fatal) });
+    postMessage({ id, type: "error", message: err?.message || String(err) });
   }
 };

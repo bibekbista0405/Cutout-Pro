@@ -29,3 +29,7 @@ npm run dev
 npm run build
 npm run preview
 ```
+
+
+## Phase 1 Cutout Editor
+The result view now includes a non-destructive mask refinement workspace. The AI mask can be inspected, manually corrected with Keep/Remove brush strokes, reset to the original AI mask, and explicitly applied to the enhanced pixels. The existing segmentation and tiled neural reconstruction pipeline remains unchanged.

@@ -34,14 +34,9 @@ app.innerHTML = `
       <div id="dropzone" class="dropzone liquid-glass">
         <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
         <div class="drop-visual"><div class="drop-orbit orbit-one"></div><div class="drop-orbit orbit-two"></div><div class="upload-orb"><span>↑</span></div></div>
-        <div class="drop-copy"><span class="eyebrow">START A RESTORATION</span><h2>Place an image in the chamber</h2><p>JPG, PNG or WEBP · up to 25 MB</p></div>
+        <div class="drop-copy"><span class="eyebrow">START A RESTORATION</span><h2>Place an image in the chamber</h2><p>JPG, PNG or WEBP · up to 25 MB</p><div class="tool-picker" role="tablist" aria-label="Choose processing tool"><button class="tool-choice active" data-tool="remove" type="button"><span>✦</span><b>Remove background</b><small>clean transparent cutout</small></button><button class="tool-choice" data-tool="enhance" type="button"><span>↗</span><b>Enhance image</b><small>reconstruct fine detail</small></button><button class="tool-choice" data-tool="both" type="button"><span>◈</span><b>Remove + enhance</b><small>full restoration</small></button></div></div>
         <button id="choose" class="primary liquid-button">Choose photo <span>↗</span></button>
-        <div class="formats"><span>01 · choose a tool</span><span>02 · watch the cutout happen</span><span>03 · export clean pixels</span></div>
-      </div>
-      <div class="tool-selector" aria-label="AI image tools">
-        <button class="mode-card selected" data-mode="remove-enhance"><span class="mode-icon">◌</span><div><b>Remove + Enhance</b><small>Isolate the subject, then rebuild detail.</small></div><i>Recommended</i></button>
-        <button class="mode-card" data-mode="remove"><span class="mode-icon">◒</span><div><b>Background Remover</b><small>Focus only on a clean transparent cutout.</small></div></button>
-        <button class="mode-card" data-mode="enhance"><span class="mode-icon">✦</span><div><b>Image Enhancer</b><small>Reconstruct detail while keeping the original background.</small></div></button>
+        <div class="formats"><span>01 · segment</span><span>02 · reconstruct</span><span>03 · preserve alpha</span></div>
       </div>
       <div class="feature-row">
         <div class="mini-glass"><span class="feature-num">01</span><div><b>Subject isolation</b><small>AI foreground segmentation creates the transparency mask.</small></div></div>
@@ -53,8 +48,8 @@ app.innerHTML = `
     <section id="processing" class="processing hidden">
       <div class="process-shell">
         <div class="process-head">
-          <div><span class="eyebrow">LIVE AI WORKSPACE</span><h2 id="processTitle">Preparing the image…</h2><p id="processSub">Checking dimensions before processing.</p></div>
-          <div class="process-meta"><span id="processBadge">STAGE 01</span><strong id="timer">0.0s</strong><small id="modeBadge">REMOVE + ENHANCE</small></div>
+          <div><span class="eyebrow" id="processEyebrow">LIVE AI WORKSPACE</span><h2 id="processTitle">Preparing the image…</h2><p id="processSub">Checking dimensions before processing.</p></div>
+          <div class="process-meta"><span id="processBadge">STAGE 01</span><strong id="timer">0.0s</strong></div>
         </div>
 
         <div class="chamber">
@@ -63,11 +58,7 @@ app.innerHTML = `
           <div class="ring ring-a"></div><div class="ring ring-b"></div><div class="ring ring-c"></div>
           <div class="image-pod glass-panel">
             <div class="pod-label"><span>INPUT MATTER</span><i></i></div>
-            <div class="pod-image checker live-cutout">
-              <img id="processingPreview" alt="Image being processed">
-              <div id="cutoutReveal" class="cutout-reveal"><img id="liveCutoutPreview" alt="Live background removal preview"><div class="reveal-sweep"></div></div>
-              <div class="preview-chip" id="livePreviewChip">LIVE MASK</div>
-            </div>
+            <div class="pod-image checker" id="processingPod"><img id="processingPreview" alt="Image being processed"><div id="cutoutReveal" class="cutout-reveal" aria-hidden="true"></div><span id="cutoutLabel" class="cutout-label">AI CUTOUT · LIVE</span></div>
             <div class="pod-footer"><span id="previewState">awaiting analysis</span><span id="previewDimensions">—</span></div>
           </div>
           <div class="process-core"><div class="core-glow"></div><div class="core-mark">C</div></div>
@@ -96,26 +87,32 @@ app.innerHTML = `
     </section>
 
     <section id="editor" class="editor hidden">
-      <div class="editor-head"><div><span class="glass-chip"><b>RESTORED</b><span>result ready</span></span><h2 id="editorTitle">Your image, cleaned in context.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
+      <div class="editor-head"><div><span class="glass-chip"><b>RESTORED</b><span>result ready</span></span><h2>One image. Three ways to inspect it.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
       <div class="canvas-card liquid-glass">
-        <div class="canvas-head"><div class="tabs"><button class="tab active" data-mode="result">Result</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Compare</button></div><div class="zoom"><button id="zoomOut">−</button><span id="zoomText">100%</span><button id="zoomIn">＋</button></div></div>
+        <div class="canvas-head"><div class="tabs"><button class="tab active" data-mode="result">Enhanced</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Compare</button></div><div class="zoom"><button id="zoomOut">−</button><span id="zoomText">100%</span><button id="zoomIn">＋</button></div></div>
         <div id="preview" class="preview checker"><div id="splitPane"><img id="previewImg" alt="AI enhanced result"></div><img id="originalImg" class="original-img" alt="Original image"></div>
       </div>
-      <div class="result-ribbon liquid-glass"><div class="ribbon-icon">✦</div><div><span class="eyebrow">RESTORATION REPORT</span><strong id="qualityTitle">AI background removal + neural reconstruction · 2×</strong><small id="qualityDetail">The subject was isolated first, then reconstructed without the background.</small></div><div class="quality-badge"><span>✓</span> neural result</div></div>
+      <div class="result-ribbon liquid-glass"><div class="ribbon-icon">✦</div><div><span class="eyebrow">RESTORATION REPORT</span><strong id="qualityTitle">Swin2SR neural reconstruction · 2×</strong><small id="qualityDetail">Neural reconstruction with transparent alpha compositing.</small></div><div id="qualityBadge" class="quality-badge"><span>✓</span> neural result</div></div>
       <div class="tools">
         <div class="tool-group liquid-glass"><label>PREVIEW SURFACE</label><div class="choices"><button class="choice selected" data-bg="checker">Transparent</button><button class="choice" data-bg="#ffffff">White</button><button class="choice" data-bg="#111827">Dark</button><button class="choice" data-bg="#dbeafe">Blue</button></div></div>
-        <div class="tool-group liquid-glass"><label>EXPORT</label><div class="select-row"><select id="scale"><option value="1">1× current result</option><option value="2" selected>2× current AI result</option></select><select id="format"><option value="png">PNG · transparent</option><option value="webp">WebP · transparent</option></select><button id="download" class="primary liquid-button">Export result <span>↓</span></button></div></div>
+        <div class="tool-group liquid-glass"><label>EXPORT</label><div class="select-row"><select id="scale"><option value="1">1× current enhanced</option><option value="2" selected>2× current AI result</option></select><button id="download" class="primary liquid-button">Preview export <span>↗</span></button></div></div>
       </div>
-      <div class="extras"><div class="extra liquid-glass"><b>Source</b><span id="sourceInfo"></span></div><div class="extra liquid-glass"><b>Pipeline</b><span id="pipelineText">AI mask → tiled Swin2SR → alpha compositing</span></div><div class="extra liquid-glass"><b>Runtime</b><span id="runtimeInfo"></span></div></div>
+      <div class="mask-editor liquid-glass">
+        <div class="mask-head"><div><span class="eyebrow">CUTOUT EDITOR</span><h3>Refine the AI mask</h3><p>Paint corrections directly on the transparency mask. Your original AI result stays untouched until you apply.</p></div><div class="mask-status"><span class="mask-dot"></span><b id="maskStatus">AI mask ready</b></div></div>
+        <div class="mask-layout"><div class="mask-canvas-wrap checker" id="maskCanvasWrap"><canvas id="maskCanvas" aria-label="Editable cutout mask"></canvas><div id="maskCursor" class="mask-cursor" hidden></div></div><div class="mask-controls"><div class="mask-tools"><button class="mask-tool active" data-mask-tool="remove"><b>−</b><span>Remove</span><small>erase subject</small></button><button class="mask-tool" data-mask-tool="keep"><b>+</b><span>Keep</span><small>restore subject</small></button><button class="mask-tool" data-mask-tool="mask"><b>◐</b><span>Mask</span><small>inspect AI mask</small></button></div><label class="range-label"><span>Brush size</span><output id="brushSizeValue">36 px</output></label><input id="brushSize" type="range" min="8" max="120" value="36"><label class="range-label"><span>Edge softness</span><output id="edgeSoftnessValue">20%</output></label><input id="edgeSoftness" type="range" min="0" max="100" value="20"><div class="mask-actions"><button id="maskReset" class="ghost liquid-control">Reset mask</button><button id="maskApply" class="primary liquid-button">Apply correction <span>✓</span></button></div><div class="mask-hint"><span>Tip</span> Paint over hair, product edges, or small background fragments.</div></div></div>
+      </div>
+      <div class="extras"><div class="extra liquid-glass"><b>Source</b><span id="sourceInfo"></span></div><div class="extra liquid-glass"><b>Pipeline</b><span>AI mask → tiled Swin2SR → alpha compositing</span></div><div class="extra liquid-glass"><b>Runtime</b><span id="runtimeInfo"></span></div></div>
       <p class="disclaimer">Super-resolution reconstructs plausible fine detail; it cannot recover missing information with certainty. Cutout Pro uses neural reconstruction rather than ordinary browser enlargement.</p>
     </section>
   </main>
+  <div id="exportPreview" class="export-preview hidden" role="dialog" aria-modal="true" aria-label="Export preview"><div class="export-backdrop"></div><div class="export-dialog liquid-glass"><div class="export-head"><div><span class="eyebrow">EXPORT PREVIEW</span><h2>See it before it leaves.</h2><p>Inspect transparency, scale and output quality before downloading.</p></div><button id="exportClose" class="icon-btn liquid-control" aria-label="Close export preview">×</button></div><div class="export-stage checker"><img id="exportImage" alt="Final export preview"></div><div class="export-meta"><div><b id="exportDimensions">—</b><span>output size</span></div><div><b id="exportFormat">PNG</b><span>format</span></div><div><b id="exportTransparency">Alpha</b><span>transparency</span></div></div><div class="export-actions"><button id="exportCancel" class="ghost liquid-control">Keep editing</button><button id="exportConfirm" class="primary liquid-button">Download <span>↓</span></button></div></div></div>
   <footer>Cutout Pro · image restoration studio · built around the pixels</footer>
 </div>`
 
 const $ = id => document.getElementById(id);
 let file, processingBlob, originalUrl, resultUrl, resultBlob, alphaBlob;
-let elapsed = 0, timerInt, zoom = 1, busy = false, jobToken = 0, activeMode = "remove-enhance", previewObjectUrl = null;
+let elapsed = 0, timerInt, zoom = 1, busy = false, jobToken = 0, activeTool = "remove", exportFormat = "png";
+let maskCanvas, maskCtx, maskLayerCanvas, maskLayerCtx, enhancedSourceBlob, maskOriginalBlob, maskPainting = false, maskTool = "remove";
 
 const yieldToBrowser = () => new Promise(resolve => {
   if (typeof scheduler !== "undefined" && scheduler.postTask) scheduler.postTask(resolve, { priority: "background" });
@@ -287,97 +284,138 @@ async function compositeWithAlpha(rgbBlob, maskBlob, width, height) {
   return blob;
 }
 
-function modeLabel(mode) {
-  return mode === "remove" ? "BACKGROUND REMOVER" : mode === "enhance" ? "IMAGE ENHANCER" : "REMOVE + ENHANCE";
+async function setupMaskEditor(enhancedBlob, refinedMask) {
+  enhancedSourceBlob = enhancedBlob; maskOriginalBlob = refinedMask;
+  const img = await createImageBitmap(enhancedBlob); const mask = await createImageBitmap(refinedMask);
+  maskCanvas = $("maskCanvas"); maskCanvas.width = img.width; maskCanvas.height = img.height;
+  maskCtx = maskCanvas.getContext("2d", { alpha: true, willReadFrequently: true });
+  maskLayerCanvas = document.createElement("canvas"); maskLayerCanvas.width = img.width; maskLayerCanvas.height = img.height;
+  maskLayerCtx = maskLayerCanvas.getContext("2d", { alpha: true, willReadFrequently: true });
+  maskLayerCtx.clearRect(0,0,img.width,img.height); maskLayerCtx.drawImage(mask,0,0,img.width,img.height);
+  maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height); maskCtx.drawImage(img,0,0); maskCtx.globalCompositeOperation="destination-in"; maskCtx.drawImage(maskLayerCanvas,0,0); maskCtx.globalCompositeOperation="source-over";
+  img.close(); mask.close(); $("maskStatus").textContent="AI mask ready · edit mode";
 }
-function resetLivePreview() {
-  if (previewObjectUrl) { revoke(previewObjectUrl); previewObjectUrl = null; }
-  $("cutoutReveal").style.setProperty("--reveal", "0%");
-  $("cutoutReveal").classList.remove("visible");
-  $("liveCutoutPreview").src = "";
-  $("processingPreview").classList.remove("mask-preview");
-  $("livePreviewChip").textContent = "LIVE MASK";
+async function renderMaskPreview() {
+  if (!maskCanvas || !maskLayerCanvas || !enhancedSourceBlob) return;
+  const img = await createImageBitmap(enhancedSourceBlob);
+  maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
+  if (maskTool === "mask") { maskCtx.fillStyle="#fff"; maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height); maskCtx.globalCompositeOperation="destination-in"; maskCtx.drawImage(maskLayerCanvas,0,0); }
+  else { maskCtx.drawImage(img,0,0,maskCanvas.width,maskCanvas.height); maskCtx.globalCompositeOperation="destination-in"; maskCtx.drawImage(maskLayerCanvas,0,0); }
+  maskCtx.globalCompositeOperation="source-over"; img.close();
 }
-function setLiveReveal(percent) {
-  $("cutoutReveal").style.setProperty("--reveal", `${Math.max(0, Math.min(100, percent))}%`);
-  $("cutoutReveal").classList.add("visible");
+function maskPoint(e) { const r=maskCanvas.getBoundingClientRect(); return {x:Math.max(0,Math.min(maskCanvas.width,(e.clientX-r.left)*maskCanvas.width/r.width)), y:Math.max(0,Math.min(maskCanvas.height,(e.clientY-r.top)*maskCanvas.height/r.height))}; }
+function paintMask(e) {
+  if (!maskCanvas || !maskLayerCtx || !maskPainting || maskTool === "mask") return; const p=maskPoint(e); const scale=maskCanvas.width/maskCanvas.getBoundingClientRect().width; const radius=Number($("brushSize").value)*scale/2; const softness=Number($("edgeSoftness").value)/100;
+  const g=maskLayerCtx.createRadialGradient(p.x,p.y,radius*Math.max(.05,softness),p.x,p.y,radius); const keep=maskTool==="keep"; g.addColorStop(0,keep?"rgba(255,255,255,1)":"rgba(0,0,0,1)"); g.addColorStop(1,keep?"rgba(255,255,255,0)":"rgba(0,0,0,0)");
+  maskLayerCtx.save(); maskLayerCtx.globalCompositeOperation=keep?"source-over":"destination-out"; maskLayerCtx.fillStyle=g; maskLayerCtx.beginPath(); maskLayerCtx.arc(p.x,p.y,radius,0,Math.PI*2); maskLayerCtx.fill(); maskLayerCtx.restore();
+  renderMaskPreview(); $("maskStatus").textContent=keep?"Manual keep stroke":"Manual remove stroke";
 }
-function setProcessingImage(blob, label) {
-  if (previewObjectUrl) revoke(previewObjectUrl);
-  previewObjectUrl = URL.createObjectURL(blob);
-  $("processingPreview").src = previewObjectUrl;
-  $("livePreviewChip").textContent = label;
+async function applyMaskCorrection() {
+  if (!maskCanvas || !enhancedSourceBlob || maskTool === "mask") return; const source=await createImageBitmap(enhancedSourceBlob); const c=document.createElement("canvas"); c.width=maskCanvas.width; c.height=maskCanvas.height; const ctx=c.getContext("2d",{alpha:true}); ctx.drawImage(source,0,0);
+  const edited=maskLayerCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height), src=ctx.getImageData(0,0,c.width,c.height); for(let i=0;i<edited.data.length;i+=4) src.data[i+3]=edited.data[i+3]; ctx.putImageData(src,0,0); resultBlob=await canvasToBlob(c); revoke(resultUrl); resultUrl=URL.createObjectURL(resultBlob); $("previewImg").src=resultUrl; source.close(); c.width=1;c.height=1; $("maskStatus").textContent="Correction applied · result updated"; $("qualityDetail").textContent="AI segmentation with manual mask correction and transparent compositing."; $("qualityBadge").innerHTML="<span>✓</span> edited mask";
 }
+async function resetMaskEditor() { if(!enhancedSourceBlob||!maskOriginalBlob)return; await setupMaskEditor(enhancedSourceBlob,maskOriginalBlob); await renderMaskPreview(); $("maskStatus").textContent="AI mask restored"; }
+
+function setTool(tool){ activeTool=tool; document.querySelectorAll(".tool-choice").forEach(b=>b.classList.toggle("active",b.dataset.tool===tool)); const labels={remove:["REMOVE BACKGROUND","Pure subject isolation","The AI is building a clean alpha matte — no enhancement pass."],enhance:["ENHANCE IMAGE","Detail reconstruction","The AI is rebuilding fine detail while preserving the original scene."],both:["FULL RESTORATION","Remove + enhance","Subject isolation followed by memory-safe neural reconstruction."]}; const x=labels[tool]; $("processEyebrow").textContent=x[0]; $("processTitle").textContent=x[1]; $("processSub").textContent=x[2]; document.body.dataset.tool=tool; $("processing").dataset.tool=tool; if(tool==="remove"){ $("stage3").querySelector("b").textContent="Reveal"; $("stage3").querySelector("small").textContent="live cutout"; $("stage4").querySelector("b").textContent="Polish"; $("stage4").querySelector("small").textContent="edge alpha"; } else { $("stage3").querySelector("b").textContent="Rebuild"; $("stage3").querySelector("small").textContent="neural detail"; $("stage4").querySelector("b").textContent="Refine"; $("stage4").querySelector("small").textContent="edge alpha"; } }
+
+function chooseRemovalModel(){ if(navigator.gpu) return "isnet_fp16"; return "isnet_quint8"; }
 
 async function start(f) {
   if (busy) return;
   if (!f.type.startsWith("image/")) return;
   if (f.size > MAX_SOURCE_MB * 1024 * 1024) { showError("That file is larger than 25 MB. Choose a smaller image to keep browser memory stable."); return; }
   busy = true; const token = ++jobToken; file = f; elapsed = 0; zoom = 1;
-  const mode = activeMode;
   revoke(originalUrl); revoke(resultUrl); originalUrl = URL.createObjectURL(f); $("originalImg").src = originalUrl;
-  hide("uploadView"); hide("editor"); show("processing"); resetLivePreview(); setStage(1); $("bar").style.width = "6%"; $("processingPreview").src = originalUrl; $("previewDimensions").textContent = "loading…";
-  $("processBadge").textContent = "AI WORKSPACE"; $("processTitle").textContent = mode === "remove" ? "Preparing your cutout…" : mode === "enhance" ? "Preparing your image…" : "Preparing the image…";
-  $("processSub").textContent = "Checking dimensions before processing."; $("modeBadge").textContent = modeLabel(mode);
+  hide("uploadView"); hide("editor"); show("processing"); setTool(activeTool); setStage(1); $("cutoutReveal").style.width="0%"; $("cutoutReveal").classList.remove("active"); $("cutoutLabel").textContent=activeTool==="remove" ? "AI CUTOUT · LIVE" : "AI PROCESS · LIVE"; $("bar").style.width = "6%"; $("processingPreview").src = originalUrl; $("previewDimensions").textContent = "loading…";
+  $("processBadge").textContent = "AI WORKSPACE"; $("processTitle").textContent = "Preparing the image…"; $("processSub").textContent = "Checking dimensions before heavy processing.";
   $("processingNew").disabled = false;
   timerInt = setInterval(() => { elapsed += .1; $("timer").textContent = elapsed.toFixed(1) + "s"; }, 100);
-  if (mode !== "remove") warmupNeuralWorker();
+  if (activeTool !== "remove") warmupNeuralWorker(); // only load reconstruction when the selected tool needs it
   try {
     await nextFrame();
     const prepared = await normalizeForProcessing(f); processingBlob = prepared.blob;
     $("previewDimensions").textContent = `${prepared.width} × ${prepared.height}`;
-    $("processSub").textContent = `${prepared.width} × ${prepared.height}px working image · ${mode === "remove" ? "mask-only mode" : `${UPSCALE_TILE}px AI tiles`}.`;
+    $("processSub").textContent = `${prepared.width} × ${prepared.height}px working image · ${UPSCALE_TILE}px AI tiles.`;
     await yieldToBrowser();
 
-    setStage(2); $("processTitle").textContent = "Finding your subject…"; $("processSub").textContent = "Watch the live transparency boundary form around the subject."; await nextFrame();
-    alphaBlob = await removeBackground(processingBlob, { model: "isnet_quint8", device: navigator.gpu ? "gpu" : "cpu", proxyToWorker: true, output: { format: "image/png", type: "mask" } });
-    if (token !== jobToken) throw new DOMException("Cancelled", "AbortError");
-    const liveCutoutBlob = await compositeWithAlpha(processingBlob, alphaBlob, prepared.width, prepared.height);
-    const liveUrl = URL.createObjectURL(liveCutoutBlob); $("liveCutoutPreview").src = liveUrl; $("livePreviewChip").textContent = "AI CUTOUT · LIVE";
-    for (let p = 8; p <= 100; p += 8) { if (token !== jobToken) throw new DOMException("Cancelled", "AbortError"); setLiveReveal(p); $("processSub").textContent = `AI cutout mapped · ${p}% of the subject boundary revealed.`; $("bar").style.width = `${8 + Math.round(p * .24)}%`; await nextFrame(); }
-    URL.revokeObjectURL(liveUrl);
-    $("previewState").textContent = "subject isolated · live mask ready";
-    await yieldToBrowser();
-
-    let enhanced = { blob: processingBlob, width: prepared.width, height: prepared.height };
-    if (mode !== "remove") {
-      setStage(3); $("processTitle").textContent = "Reconstructing detail…"; $("processSub").textContent = `Preparing ${UPSCALE_TILE}px neural tiles off the main thread.`; await nextFrame();
-      enhanced = await upscaleTiled(processingBlob, token);
-      if (token !== jobToken) throw new DOMException("Cancelled", "AbortError");
-      setProcessingImage(enhanced.blob, "NEURAL DETAIL · 2×"); $("previewDimensions").textContent = `${enhanced.width} × ${enhanced.height}`;
-      await yieldToBrowser();
+    setStage(2); $("processTitle").textContent = activeTool === "enhance" ? "Preparing detail reconstruction…" : "Mapping your subject…"; $("processSub").textContent = activeTool === "remove" ? "High-quality foreground segmentation is building the transparency matte." : "Building a clean subject matte before the next stage."; await nextFrame();
+    if (activeTool !== "enhance") {
+      const removalModel = chooseRemovalModel();
+      $("signalMask").textContent = navigator.gpu ? "precision GPU" : "safe CPU";
+      alphaBlob = await removeBackground(processingBlob, {
+        model: removalModel,
+        device: navigator.gpu ? "gpu" : "cpu",
+        proxyToWorker: true,
+        output: { format: "image/png", type: "mask" },
+        progress: (key,current,total) => { if(key.includes("inference")) { const pct=Math.round((current/Math.max(total,1))*100); $("signalMask").textContent = `AI ${pct}%`; } }
+      });
+      if (token !== jobToken) return;
+      $("previewState").textContent = "AI matte generated · revealing cutout";
+      if (activeTool === "remove") {
+        const liveCutout = await compositeWithAlpha(processingBlob, alphaBlob, prepared.width, prepared.height);
+        const liveUrl = URL.createObjectURL(liveCutout);
+        $("processingPreview").src = liveUrl;
+        $("processingPreview").classList.remove("mask-preview");
+        await nextFrame();
+        $("cutoutReveal").classList.add("active");
+        $("cutoutReveal").style.width = "100%";
+        await new Promise(r=>setTimeout(r,720));
+        URL.revokeObjectURL(liveUrl);
+      } else {
+        const maskUrl = URL.createObjectURL(alphaBlob);
+        $("processingPreview").src = maskUrl;
+        $("processingPreview").classList.add("mask-preview");
+        await nextFrame();
+        $("cutoutReveal").classList.add("active");
+        $("cutoutReveal").style.width = "100%";
+        await new Promise(r=>setTimeout(r,720));
+        URL.revokeObjectURL(maskUrl);
+        $("processingPreview").classList.remove("mask-preview");
+        $("processingPreview").src = originalUrl;
+      }
     }
+    await yieldToBrowser();
 
-    if (mode === "remove") {
-      setStage(4); $("processTitle").textContent = "Cleaning the cutout…"; $("processSub").textContent = "Applying the AI mask to your original pixels."; await nextFrame();
-      resultBlob = await compositeWithAlpha(processingBlob, alphaBlob, prepared.width, prepared.height);
-    } else if (mode === "enhance") {
-      setStage(4); $("processTitle").textContent = "Finishing the enhancement…"; $("processSub").textContent = "Keeping your original background while preserving reconstructed detail."; await nextFrame();
-      resultBlob = enhanced.blob;
+    let enhanced;
+    if (activeTool === "remove") {
+      enhanced = { blob: processingBlob, width: prepared.width, height: prepared.height };
+      $("signalDetail").textContent = "skipped";
     } else {
-      setStage(4); $("processTitle").textContent = "Refining the edges…"; $("processSub").textContent = "Scaling the segmentation mask with browser compositing."; await nextFrame();
-      const refinedMask = await resizeAlphaBlob(alphaBlob, enhanced.width, enhanced.height);
-      await yieldToBrowser();
-      setStage(5); $("processTitle").textContent = "Compositing your result…"; $("processSub").textContent = "Applying transparency to the reconstructed subject."; await nextFrame();
-      resultBlob = await compositeWithAlpha(enhanced.blob, refinedMask, enhanced.width, enhanced.height);
+      setStage(3); $("processTitle").textContent = "Reconstructing detail…"; $("processSub").textContent = `Preparing ${UPSCALE_TILE}px neural tiles. No full-frame inference.`; await nextFrame();
+      enhanced = await upscaleTiled(processingBlob, token);
     }
-    if (token !== jobToken) throw new DOMException("Cancelled", "AbortError");
-    if (mode !== "remove" && mode !== "enhance") setStage(5); else setStage(5);
-    setProcessingImage(resultBlob, mode === "remove" ? "CUTOUT · READY" : mode === "enhance" ? "ENHANCED · READY" : "CUTOUT + DETAIL · READY");
+    if (activeTool === "enhance") alphaBlob = await createOpaqueMask(enhanced.width, enhanced.height);
+    if (token !== jobToken) return;
+    $("processingPreview").classList.remove("mask-preview");
+    const enhancedUrl = URL.createObjectURL(enhanced.blob);
+    $("processingPreview").src = enhancedUrl;
+    $("previewDimensions").textContent = `${enhanced.width} × ${enhanced.height}`;
+    await yieldToBrowser();
+
+    setStage(activeTool === "remove" ? 4 : 4); $("processTitle").textContent = "Refining the cutout edge…"; $("processSub").textContent = "Cleaning the matte and preserving soft subject boundaries."; await nextFrame();
+    const refinedMask = await refineAlphaMask(await resizeAlphaBlob(alphaBlob, enhanced.width, enhanced.height));
+    await setupMaskEditor(enhanced.blob, refinedMask);
+    await yieldToBrowser();
+
+    setStage(5); $("processTitle").textContent = activeTool === "remove" ? "The background is gone." : "Compositing your result…"; $("processSub").textContent = activeTool === "remove" ? "Your original pixels are preserved; only the background alpha has changed." : "Applying transparency without a giant pixel-by-pixel loop."; await nextFrame();
+    resultBlob = await compositeWithAlpha(enhanced.blob, refinedMask, enhanced.width, enhanced.height);
     resultUrl = URL.createObjectURL(resultBlob); $("previewImg").src = resultUrl;
-    const info = await fileInfo(resultBlob); clearInterval(timerInt);
-    $("stats").textContent = `${elapsed.toFixed(1)}s · ${info.width} × ${info.height}px · ${modeLabel(mode).toLowerCase()}`;
+    const info = await fileInfo(resultBlob); clearInterval(timerInt); setStage(5);
+    $("stats").textContent = `${elapsed.toFixed(1)}s · ${info.width} × ${info.height}px · ${activeTool === "remove" ? "AI cutout" : "AI 2×"}`;
+    $("qualityTitle").textContent = activeTool === "remove" ? "Precision AI background removal" : "Swin2SR neural reconstruction · 2×";
+    $("qualityDetail").textContent = activeTool === "remove" ? `Foreground matte generated with ${chooseRemovalModel()} and refined alpha compositing.` : "Neural reconstruction with transparent alpha compositing.";
+    $("qualityBadge").innerHTML = activeTool === "remove" ? "<span>✓</span> cutout ready" : "<span>✓</span> neural result";
     $("sourceInfo").textContent = `${f.name} · ${prepared.original.width} × ${prepared.original.height}px · ${(f.size / 1024 / 1024).toFixed(2)} MB`;
-    $("editorTitle").textContent = mode === "remove" ? "Your background is gone." : mode === "enhance" ? "Your image, rebuilt with detail." : "Your image, cleaned in context.";
-    $("qualityTitle").textContent = mode === "remove" ? "AI background removal · transparent result" : mode === "enhance" ? "Swin2SR neural reconstruction · 2×" : "AI background removal + neural reconstruction · 2×";
-    $("qualityDetail").textContent = mode === "remove" ? "The original pixels were preserved while the AI mask removes the background." : mode === "enhance" ? "Neural reconstruction improves fine detail while retaining the original background." : "The subject was isolated first, then reconstructed and composited with transparent alpha.";
-    $("pipelineText").textContent = mode === "remove" ? "AI mask → alpha composite → transparent export" : mode === "enhance" ? "tiled Swin2SR → enhanced export" : "AI mask → tiled Swin2SR → alpha compositing";
     hide("processing"); show("editor"); applyZoom();
   } catch (err) {
     console.error("Cutout Pro processing error:", err); clearInterval(timerInt);
     if (err?.name !== "AbortError") showError(err?.message || "The browser could not complete this image safely.");
   } finally { busy = false; }
 }
+
+async function createOpaqueMask(w,h){ const c=document.createElement("canvas"); c.width=w;c.height=h; const x=c.getContext("2d"); x.fillStyle="#fff";x.fillRect(0,0,w,h); const out=await canvasToBlob(c); c.width=1;c.height=1; return out; }
+
+async function refineAlphaMask(blob){ const c=await blobToCanvas(blob); const o=document.createElement("canvas"); o.width=c.width; o.height=c.height; const x=o.getContext("2d",{willReadFrequently:true}); x.filter="blur(.45px)"; x.drawImage(c,0,0); x.filter="none"; const d=x.getImageData(0,0,o.width,o.height); for(let i=0;i<d.data.length;i+=4){ const a=d.data[i]; d.data[i]=255; d.data[i+1]=255; d.data[i+2]=255; d.data[i+3]=a<6?0:a>249?255:a; } x.putImageData(d,0,0); c.width=1;c.height=1; const out=await canvasToBlob(o); o.width=1;o.height=1; return out; }
 
 async function resizeAlphaBlob(blob, w, h) {
   const c = await blobToCanvas(blob); const o = document.createElement("canvas"); o.width = w; o.height = h;
@@ -388,17 +426,10 @@ async function resizeAlphaBlob(blob, w, h) {
 function showError(message) {
   hide("editor"); show("processing"); $("processBadge").textContent = "SAFE RETRY"; $("processTitle").textContent = "The image was not completed"; $("processSub").textContent = message; $("tip").textContent = "Cutout Pro stopped the job instead of continuing to consume memory. Try a smaller image if the browser reports a resource limit."; $("bar").style.width = "0%";
 }
-function resetToUpload() { jobToken++; busy = false; clearInterval(timerInt); revoke(resultUrl); resultUrl = null; revoke(originalUrl); originalUrl = null; processingBlob = null; alphaBlob = null; $("fileInput").value = ""; hide("processing"); hide("editor"); show("uploadView"); }
+function resetToUpload() { jobToken++; busy = false; clearInterval(timerInt); revoke(resultUrl); resultUrl = null; revoke(originalUrl); originalUrl = null; processingBlob = null; alphaBlob = null; enhancedSourceBlob = null; maskOriginalBlob = null; maskCanvas = null; maskCtx = null; maskLayerCanvas = null; maskLayerCtx = null; $("fileInput").value = ""; hide("processing"); hide("editor"); show("uploadView"); }
 function applyZoom() { $("previewImg").style.transform = `scale(${zoom})`; $("originalImg").style.transform = `scale(${zoom})`; $("zoomText").textContent = Math.round(zoom * 100) + "%"; }
 
-document.querySelectorAll(".mode-card").forEach(card => card.onclick = () => {
-  if (busy) return;
-  document.querySelectorAll(".mode-card").forEach(x => x.classList.remove("selected"));
-  card.classList.add("selected");
-  activeMode = card.dataset.mode;
-});
-
-$("choose").onclick = () => !busy && $("fileInput").click();
+$("choose").onclick = () => !busy && $("fileInput").click(); document.querySelectorAll(".tool-choice").forEach(b=>b.onclick=()=>setTool(b.dataset.tool)); setTool("remove");
 $("fileInput").onchange = e => e.target.files[0] && start(e.target.files[0]);
 $("processingNew").onclick = resetToUpload;
 ["dragenter", "dragover"].forEach(x => $("dropzone").addEventListener(x, e => { e.preventDefault(); if (!busy) $("dropzone").classList.add("drag"); }));
@@ -410,18 +441,16 @@ document.querySelectorAll(".tab").forEach(b => b.onclick = () => { document.quer
 $("zoomIn").onclick = () => { zoom = Math.min(2, zoom + .1); applyZoom(); }; $("zoomOut").onclick = () => { zoom = Math.max(.5, zoom - .1); applyZoom(); };
 $("new").onclick = resetToUpload;
 
-$("download").onclick = async () => {
-  if (busy || !resultBlob) return;
-  const scale = Number($("scale").value); const format = $("format").value; const button = $("download"); button.disabled = true; button.textContent = `Preparing ${format.toUpperCase()}…`;
-  try {
-    let blob = resultBlob;
-    if (scale === 1) blob = resultBlob;
-    if (format === "webp") {
-      const canvas = await blobToCanvas(resultBlob);
-      blob = await canvasToBlob(canvas, "image/webp", .94);
-      canvas.width = 1; canvas.height = 1;
-    }
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `cutout-pro-${activeMode}-${scale}x-${Date.now()}.${format}`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-  } catch (err) { showError(err?.message || "Export could not finish safely."); } finally { button.disabled = false; button.textContent = "Export result ↓"; }
-};
+async function openExportPreview(){ if(!resultBlob)return; const url=URL.createObjectURL(resultBlob); $("exportImage").src=url; const info=await fileInfo(resultBlob); $("exportDimensions").textContent=`${info.width} × ${info.height}px`; $("exportFormat").textContent="PNG"; $("exportTransparency").textContent="Alpha ready"; $("exportPreview").classList.remove("hidden"); $("exportPreview").dataset.url=url; }
+async function confirmExport(){ if(!resultBlob)return; const a=document.createElement("a"); a.href=URL.createObjectURL(resultBlob); a.download=`cutout-pro-${activeTool}-${Date.now()}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); closeExportPreview(); }
+function closeExportPreview(){ const u=$("exportPreview").dataset.url; if(u)URL.revokeObjectURL(u); $("exportPreview").dataset.url=""; $("exportImage").src=""; $("exportPreview").classList.add("hidden"); }
+$("download").onclick = openExportPreview; $("exportConfirm").onclick=confirmExport; $("exportClose").onclick=closeExportPreview; $("exportCancel").onclick=closeExportPreview;
+
+document.querySelectorAll(".mask-tool").forEach(b=>b.onclick=async()=>{ document.querySelectorAll(".mask-tool").forEach(x=>x.classList.remove("active")); b.classList.add("active"); maskTool=b.dataset.maskTool; await renderMaskPreview(); $("maskCanvas").classList.toggle("mask-only",maskTool==="mask"); });
+$("brushSize").oninput=e=>$("brushSizeValue").textContent=`${e.target.value} px`;
+$("edgeSoftness").oninput=e=>$("edgeSoftnessValue").textContent=`${e.target.value}%`;
+$("maskCanvas").addEventListener("pointerdown",e=>{ if(maskTool==="mask")return; maskPainting=true; e.currentTarget.setPointerCapture(e.pointerId); paintMask(e); });
+$("maskCanvas").addEventListener("pointermove",e=>{ const r=e.currentTarget.getBoundingClientRect(), c=$("maskCursor"), size=Number($("brushSize").value); c.style.width=`${size}px`; c.style.height=`${size}px`; c.style.left=`${e.clientX-r.left-size/2}px`; c.style.top=`${e.clientY-r.top-size/2}px`; c.hidden=false; if(maskPainting)paintMask(e); });
+$("maskCanvas").addEventListener("pointerup",e=>{maskPainting=false;try{e.currentTarget.releasePointerCapture(e.pointerId)}catch{}}); $("maskCanvas").addEventListener("pointerleave",()=>{maskPainting=false;$("maskCursor").hidden=true;});
+$("maskApply").onclick=applyMaskCorrection; $("maskReset").onclick=resetMaskEditor;
 $("theme").onclick = () => document.documentElement.classList.toggle("dark");

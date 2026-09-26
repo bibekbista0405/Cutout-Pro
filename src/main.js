@@ -1,26 +1,20 @@
 import { removeBackground } from "@imgly/background-removal";
-import { pipeline, env, RawImage } from "@huggingface/transformers";
 import "./style.css";
 
-env.allowLocalModels = false;
-env.useBrowserCache = true;
-
-env.backends = env.backends || {};
-
-const UPSCALE_MODEL = "Xenova/swin2SR-lightweight-x2-64";
 const MAX_SOURCE_MB = 25;
 const MAX_SOURCE_PIXELS = 30_000_000;
 // Deliberately conservative: browser ML should never be allowed to consume the machine.
 const PROCESS_MAX_EDGE = 768;
-const UPSCALE_TILE = 256;
 const EXPORT_MAX_PIXELS = 8_000_000;
+const SAFE_TILE = 256;
+const FAST_TILE = 288;
 const app = document.querySelector("#app");
 
 app.innerHTML = `
 <div class="app-shell">
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="ambient ambient-c"></div><div class="ambient ambient-d"></div>
   <header class="nav glass-panel">
-    <div class="brand"><div class="logo-liquid"><span>C</span></div><div><strong>Cutout</strong><span>PRO</span><small>image restoration studio</small></div></div>
+    <div class="brand"><div class="logo-liquid" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><defs><path id="cpPetal" d="M12,12 C8,10 8,4 12,2 C16,4 16,10 12,12 Z"/></defs><use href="#cpPetal" fill="#fff"/><use href="#cpPetal" fill="#fff" opacity=".82" transform="rotate(120 12 12)"/><use href="#cpPetal" fill="#fff" opacity=".64" transform="rotate(240 12 12)"/></svg></div><div><strong>Cutout</strong><span>PRO</span><small>image restoration studio</small></div></div>
     <div class="nav-actions"><div class="privacy"><i></i> local-first processing</div><button id="theme" class="icon-btn liquid-control" aria-label="Toggle theme">◐</button></div>
   </header>
 
@@ -30,6 +24,11 @@ app.innerHTML = `
       <h1>Turn ordinary pixels into<br><em>cleaner visual matter.</em></h1>
       <p>Remove the background and reconstruct detail through a calm, visible workflow built around the image itself.</p>
       <div class="hero-proof"><span><i></i> Neural 2×</span><span><i></i> Tile-safe</span><span><i></i> On-device</span></div>
+      <div class="hero-showcase" aria-hidden="true">
+        <div class="showcase-card showcase-segment"><em>Segment</em></div>
+        <div class="showcase-card showcase-detail"><em>Reconstruct</em></div>
+        <div class="showcase-card showcase-alpha"><em>Alpha</em></div>
+      </div>
     </section>
 
     <section id="uploadView" class="upload-view">
@@ -84,7 +83,7 @@ app.innerHTML = `
           </div>
           <div class="stage-caption"><span id="tip">The first AI run downloads and caches the models.</span><span class="safe-pill"><i></i> memory-safe mode</span></div>
         </div>
-        <button id="processingNew" class="ghost liquid-control">← Choose a different photo</button>
+        <div class="process-actions"><span id="systemLoad">Browser workload: checking…</span><button id="processingNew" class="ghost liquid-control">Cancel & choose another photo</button></div>
       </div>
     </section>
 
@@ -97,9 +96,9 @@ app.innerHTML = `
       <div class="result-ribbon liquid-glass"><div class="ribbon-icon">✦</div><div><span class="eyebrow">RESTORATION REPORT</span><strong id="qualityTitle">Swin2SR neural reconstruction · 2×</strong><small id="qualityDetail">Neural reconstruction with transparent alpha compositing.</small></div><div class="quality-badge"><span>✓</span> neural result</div></div>
       <div class="tools">
         <div class="tool-group liquid-glass"><label>PREVIEW SURFACE</label><div class="choices"><button class="choice selected" data-bg="checker">Transparent</button><button class="choice" data-bg="#ffffff">White</button><button class="choice" data-bg="#111827">Dark</button><button class="choice" data-bg="#dbeafe">Blue</button></div></div>
-        <div class="tool-group liquid-glass"><label>EXPORT</label><div class="select-row"><select id="scale"><option value="1">1× current enhanced</option><option value="2" selected>2× current AI result</option><option value="4">4× AI reconstruction</option></select><button id="download" class="primary liquid-button">Download PNG <span>↓</span></button></div></div>
+        <div class="tool-group liquid-glass"><label>EXPORT</label><div class="select-row"><select id="scale" aria-label="Export scale"><option value="1">1× current enhanced</option><option value="2" selected>2× current AI result</option></select><select id="format" aria-label="Export format"><option value="png">PNG · transparent</option><option value="webp">WebP · smaller</option></select><button id="download" class="primary liquid-button">Download <span>↓</span></button></div></div>
       </div>
-      <div class="extras"><div class="extra liquid-glass"><b>Source</b><span id="sourceInfo"></span></div><div class="extra liquid-glass"><b>Pipeline</b><span>AI mask → tiled Swin2SR → alpha compositing</span></div><div class="extra liquid-glass"><b>Runtime</b><span id="runtimeInfo"></span></div></div>
+      <div class="extras"><div class="extra liquid-glass"><b>Source</b><span id="sourceInfo"></span></div><div class="extra liquid-glass"><b>Pipeline</b><span>AI mask → tiled Swin2SR → alpha compositing</span></div><div class="extra liquid-glass"><b>Runtime</b><span id="runtimeInfo"></span></div><div class="extra liquid-glass"><b>Safety</b><span id="safetyInfo">Adaptive tile budget · worker watchdogs · cleanup</span></div></div>
       <p class="disclaimer">Super-resolution reconstructs plausible fine detail; it cannot recover missing information with certainty. Cutout Pro uses neural reconstruction rather than ordinary browser enlargement.</p>
     </section>
   </main>
@@ -108,7 +107,7 @@ app.innerHTML = `
 
 const $ = id => document.getElementById(id);
 let file, processingBlob, originalUrl, resultUrl, resultBlob, alphaBlob;
-let elapsed = 0, timerInt, zoom = 1, upscalerPromise, busy = false, jobToken = 0;
+let elapsed = 0, timerInt, zoom = 1, busy = false, jobToken = 0, processingPreviewUrl = null, cancelPending = false;
 
 const yieldToBrowser = () => new Promise(resolve => {
   if (typeof scheduler !== "undefined" && scheduler.postTask) scheduler.postTask(resolve, { priority: "background" });
@@ -116,25 +115,74 @@ const yieldToBrowser = () => new Promise(resolve => {
 });
 const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
 
-async function getUpscaler() {
-  if (!upscalerPromise) {
-    const webgpu = !!navigator.gpu;
-    upscalerPromise = (async () => {
-      try {
-        if (webgpu) {
-          const p = await pipeline("image-to-image", UPSCALE_MODEL, { device: "webgpu", dtype: "fp16" });
-          $("runtimeInfo").textContent = "WebGPU · tiled neural inference";
-          return p;
-        }
-      } catch (error) {
-        console.warn("WebGPU super-resolution unavailable; using quantized WASM.", error);
-      }
-      const p = await pipeline("image-to-image", UPSCALE_MODEL, { device: "wasm", dtype: "q8" });
-      $("runtimeInfo").textContent = "WASM · quantized tiled neural inference";
-      return p;
-    })();
+// The neural model runs in a dedicated worker (src/upscale-worker.js) so that
+// stage 3 ("Rebuild") never blocks the main thread. Running that inference
+// directly on the page's own thread is what previously made the whole tab —
+// and on modest machines, the whole browser — feel frozen at stage 3.
+let neuralWorker = null;
+let workerReqId = 0;
+const pendingWorkerReqs = new Map();
+
+function terminateNeuralWorker(reason = "The neural worker was stopped.") {
+  const worker = neuralWorker;
+  neuralWorker = null;
+  if (worker) {
+    try { worker.terminate(); } catch {}
   }
-  return upscalerPromise;
+  for (const pending of pendingWorkerReqs.values()) pending.reject(new DOMException(reason, "AbortError"));
+  pendingWorkerReqs.clear();
+}
+
+function getNeuralWorker() {
+  if (!neuralWorker) {
+    neuralWorker = new Worker(new URL("./upscale-worker.js", import.meta.url), { type: "module" });
+    neuralWorker.onmessage = e => {
+      const msg = e.data || {};
+      if (msg.type === "progress") {
+        const d = msg.data;
+        if (d?.status === "progress" && d.total) {
+          const pct = Math.round((d.loaded / d.total) * 100);
+          $("processSub").textContent = `Loading neural model · ${d.file || "weights"} · ${pct}%`;
+        } else if (d?.status === "initiate") {
+          $("processSub").textContent = `Loading neural model · fetching ${d.file || "files"}…`;
+        } else if (d?.status === "download") {
+          $("processSub").textContent = `Loading neural model · downloading ${d.file || "weights"}…`;
+        }
+        return;
+      }
+      if (msg.type === "log") { console.warn(msg.message); return; }
+      const pending = pendingWorkerReqs.get(msg.id);
+      if (!pending) return;
+      pendingWorkerReqs.delete(msg.id);
+      if (msg.type === "error") {
+        if (msg.fatal) terminateNeuralWorker(msg.message);
+        pending.reject(new Error(msg.message));
+      } else pending.resolve(msg);
+    };
+    neuralWorker.onerror = err => {
+      const message = err?.message || "The neural worker crashed.";
+      terminateNeuralWorker(message);
+    };
+  }
+  return neuralWorker;
+}
+
+function callNeuralWorker(message, transfer) {
+  return new Promise((resolve, reject) => {
+    const id = ++workerReqId;
+    pendingWorkerReqs.set(id, { resolve, reject });
+    try { getNeuralWorker().postMessage({ ...message, id }, transfer || []); }
+    catch (err) { pendingWorkerReqs.delete(id); reject(err); }
+  });
+}
+
+// Kick off model loading as soon as a photo is chosen, in parallel with
+// stage 2 (subject isolation), so the model is often already warm by the
+// time stage 3 starts.
+function warmupNeuralWorker() {
+  callNeuralWorker({ type: "warmup" }).then(msg => {
+    if (msg?.runtime) $("runtimeInfo").textContent = msg.runtime;
+  }).catch(() => {});
 }
 
 function show(id) { $(id).classList.remove("hidden"); }
@@ -153,6 +201,11 @@ function setStage(n) {
   $("previewState").textContent = n === 1 ? "preparing" : n === 2 ? "isolating subject" : n === 3 ? "reconstructing detail" : n === 4 ? "refining edges" : "compositing";
 }
 function revoke(url) { if (url) URL.revokeObjectURL(url); }
+function setProcessingPreview(blobOrUrl) {
+  revoke(processingPreviewUrl);
+  processingPreviewUrl = typeof blobOrUrl === "string" ? blobOrUrl : URL.createObjectURL(blobOrUrl);
+  $("processingPreview").src = processingPreviewUrl;
+}
 
 async function fileInfo(blob) {
   const u = URL.createObjectURL(blob);
@@ -189,43 +242,43 @@ async function blobToCanvas(blob) {
   return canvas;
 }
 
-function rawToCanvas(raw) {
-  const channels = raw.channels === 4 ? raw : raw.rgba();
-  const canvas = document.createElement("canvas"); canvas.width = channels.width; canvas.height = channels.height;
-  const ctx = canvas.getContext("2d", { alpha: true });
-  const bytes = channels.data instanceof Uint8ClampedArray ? channels.data : new Uint8ClampedArray(channels.data);
-  ctx.putImageData(new ImageData(bytes, channels.width, channels.height), 0, 0);
-  return canvas;
+function chooseTileSize() {
+  const memory = Number(navigator.deviceMemory || 4);
+  const cores = Number(navigator.hardwareConcurrency || 4);
+  // Keep the conservative tile on unknown/low-memory devices. A modest bump
+  // reduces tile count on capable machines without allowing giant tensors.
+  return memory >= 8 && cores >= 8 ? FAST_TILE : SAFE_TILE;
 }
 
 async function upscaleTiled(sourceBlob, token) {
-  const source = await RawImage.fromBlob(sourceBlob);
-  const sourceCanvas = document.createElement("canvas"); sourceCanvas.width = source.width; sourceCanvas.height = source.height;
-  sourceCanvas.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(source.rgba().data), source.width, source.height), 0, 0);
-  const output = document.createElement("canvas"); output.width = source.width * 2; output.height = source.height * 2;
+  const sourceCanvas = await blobToCanvas(sourceBlob);
+  const srcCtx = sourceCanvas.getContext("2d", { alpha: true });
+  const width = sourceCanvas.width, height = sourceCanvas.height;
+  const tileSize = chooseTileSize();
+  const output = document.createElement("canvas"); output.width = width * 2; output.height = height * 2;
   const out = output.getContext("2d", { alpha: false });
-  out.imageSmoothingEnabled = true;
 
-  const upscaler = await getUpscaler();
-  const tilesX = Math.ceil(source.width / UPSCALE_TILE);
-  const tilesY = Math.ceil(source.height / UPSCALE_TILE);
+  const tilesX = Math.ceil(width / tileSize);
+  const tilesY = Math.ceil(height / tileSize);
   const total = tilesX * tilesY;
   let done = 0;
 
-  for (let y = 0; y < source.height; y += UPSCALE_TILE) {
-    for (let x = 0; x < source.width; x += UPSCALE_TILE) {
+  for (let y = 0; y < height; y += tileSize) {
+    for (let x = 0; x < width; x += tileSize) {
       if (token !== jobToken) throw new DOMException("Cancelled", "AbortError");
-      const w = Math.min(UPSCALE_TILE, source.width - x);
-      const h = Math.min(UPSCALE_TILE, source.height - y);
-      const tile = document.createElement("canvas"); tile.width = w; tile.height = h;
-      tile.getContext("2d").drawImage(sourceCanvas, x, y, w, h, 0, 0, w, h);
-      const tileRaw = RawImage.fromCanvas(tile);
-      const enhanced = await upscaler(tileRaw);
-      const enhancedCanvas = rawToCanvas(enhanced);
-      out.drawImage(enhancedCanvas, 0, 0, enhancedCanvas.width, enhancedCanvas.height, x * 2, y * 2, w * 2, h * 2);
-      tile.width = 1; tile.height = 1; enhancedCanvas.width = 1; enhancedCanvas.height = 1;
+      const w = Math.min(tileSize, width - x);
+      const h = Math.min(tileSize, height - y);
+      const tileData = srcCtx.getImageData(x, y, w, h);
+      const buffer = tileData.data.buffer;
+      // The actual neural inference happens in upscale-worker.js, off this
+      // thread, so the page stays responsive while a tile is processing.
+      const result = await callNeuralWorker({ type: "tile", width: w, height: h, channels: 4, data: buffer }, [buffer]);
+      if (token !== jobToken) throw new DOMException("Cancelled", "AbortError");
+      const resultBytes = new Uint8ClampedArray(result.data);
+      out.putImageData(new ImageData(resultBytes, result.width, result.height), x * 2, y * 2);
+      if (result.runtime) $("runtimeInfo").textContent = result.runtime;
       done++;
-      $("processSub").textContent = `Neural tile ${done} of ${total} · ${Math.round(done / total * 100)}% · the browser is yielding between tiles.`;
+      $("processSub").textContent = `Neural tile ${done} of ${total} · ${Math.round(done / total * 100)}% · ${tileSize}px workload · worker isolated.`;
       $("bar").style.width = `${35 + Math.round((done / total) * 32)}%`;
       await yieldToBrowser();
     }
@@ -234,7 +287,7 @@ async function upscaleTiled(sourceBlob, token) {
   sourceCanvas.width = 1; sourceCanvas.height = 1;
   const blob = await canvasToBlob(output);
   output.width = 1; output.height = 1;
-  return { blob, width: source.width * 2, height: source.height * 2 };
+  return { blob, width: width * 2, height: height * 2, tileSize, totalTiles: total };
 }
 
 async function compositeWithAlpha(rgbBlob, maskBlob, width, height) {
@@ -257,17 +310,23 @@ async function start(f) {
   if (busy) return;
   if (!f.type.startsWith("image/")) return;
   if (f.size > MAX_SOURCE_MB * 1024 * 1024) { showError("That file is larger than 25 MB. Choose a smaller image to keep browser memory stable."); return; }
-  busy = true; const token = ++jobToken; file = f; elapsed = 0; zoom = 1;
+  busy = true; cancelPending = false; const token = ++jobToken; file = f; elapsed = 0; zoom = 1;
   revoke(originalUrl); revoke(resultUrl); originalUrl = URL.createObjectURL(f); $("originalImg").src = originalUrl;
-  hide("uploadView"); hide("editor"); show("processing"); setStage(1); $("bar").style.width = "6%"; $("processingPreview").src = originalUrl; $("previewDimensions").textContent = "loading…";
+  hide("uploadView"); hide("editor"); show("processing"); setStage(1); $("bar").style.width = "6%"; setProcessingPreview(originalUrl); $("previewDimensions").textContent = "loading…";
   $("processBadge").textContent = "AI WORKSPACE"; $("processTitle").textContent = "Preparing the image…"; $("processSub").textContent = "Checking dimensions before heavy processing.";
   $("processingNew").disabled = false;
+  $("choose").disabled = false;
+  const memory = navigator.deviceMemory ? `${navigator.deviceMemory} GB hint` : "memory hint unavailable";
+  const cores = navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} CPU threads` : "CPU count unavailable";
+  $("systemLoad").textContent = `Browser workload: ${memory} · ${cores}`;
+  $("safetyInfo").textContent = `Adaptive ${chooseTileSize()}px tiles · worker watchdogs · cancellable cleanup`;
   timerInt = setInterval(() => { elapsed += .1; $("timer").textContent = elapsed.toFixed(1) + "s"; }, 100);
+  warmupNeuralWorker(); // start loading the model now, in parallel with stages 1-2
   try {
     await nextFrame();
     const prepared = await normalizeForProcessing(f); processingBlob = prepared.blob;
     $("previewDimensions").textContent = `${prepared.width} × ${prepared.height}`;
-    $("processSub").textContent = `${prepared.width} × ${prepared.height}px working image · ${UPSCALE_TILE}px AI tiles.`;
+    $("processSub").textContent = `${prepared.width} × ${prepared.height}px working image · adaptive ${chooseTileSize()}px AI tiles.`;
     await yieldToBrowser();
 
     setStage(2); $("processTitle").textContent = "Finding your subject…"; $("processSub").textContent = "Lightweight AI segmentation is running in its worker."; await nextFrame();
@@ -279,17 +338,15 @@ async function start(f) {
     });
     if (token !== jobToken) return;
     $("previewState").textContent = "subject isolated · mask ready";
-    const maskUrl = URL.createObjectURL(alphaBlob);
-    $("processingPreview").src = maskUrl;
+    setProcessingPreview(alphaBlob);
     $("processingPreview").classList.add("mask-preview");
-    setTimeout(() => URL.revokeObjectURL(maskUrl), 1200);
     await yieldToBrowser();
 
-    setStage(3); $("processTitle").textContent = "Reconstructing detail…"; $("processSub").textContent = `Preparing ${UPSCALE_TILE}px neural tiles. No full-frame inference.`; await nextFrame();
+    setStage(3); $("processTitle").textContent = "Reconstructing detail…"; $("processSub").textContent = `Preparing adaptive neural tiles. No full-frame inference.`; await nextFrame();
     const enhanced = await upscaleTiled(processingBlob, token);
     if (token !== jobToken) return;
     $("processingPreview").classList.remove("mask-preview");
-    $("processingPreview").src = URL.createObjectURL(enhanced.blob);
+    setProcessingPreview(enhanced.blob);
     $("previewDimensions").textContent = `${enhanced.width} × ${enhanced.height}`;
     await yieldToBrowser();
 
@@ -307,7 +364,18 @@ async function start(f) {
   } catch (err) {
     console.error("Cutout Pro processing error:", err); clearInterval(timerInt);
     if (err?.name !== "AbortError") showError(err?.message || "The browser could not complete this image safely.");
-  } finally { busy = false; }
+  } finally {
+    if (token === jobToken) {
+      busy = false;
+      cancelPending = false;
+      $("choose").disabled = false;
+      $("choose").innerHTML = 'Choose photo <span>↗</span>';
+    } else {
+      busy = false;
+      $("choose").disabled = false;
+      $("choose").innerHTML = 'Choose photo <span>↗</span>';
+    }
+  }
 }
 
 async function resizeAlphaBlob(blob, w, h) {
@@ -319,7 +387,22 @@ async function resizeAlphaBlob(blob, w, h) {
 function showError(message) {
   hide("editor"); show("processing"); $("processBadge").textContent = "SAFE RETRY"; $("processTitle").textContent = "The image was not completed"; $("processSub").textContent = message; $("tip").textContent = "Cutout Pro stopped the job instead of continuing to consume memory. Try a smaller image if the browser reports a resource limit."; $("bar").style.width = "0%";
 }
-function resetToUpload() { jobToken++; busy = false; clearInterval(timerInt); revoke(resultUrl); resultUrl = null; revoke(originalUrl); originalUrl = null; processingBlob = null; alphaBlob = null; $("fileInput").value = ""; hide("processing"); hide("editor"); show("uploadView"); }
+function resetToUpload() {
+  jobToken++;
+  cancelPending = true;
+  busy = true;
+  clearInterval(timerInt);
+  terminateNeuralWorker("Processing was cancelled.");
+  revoke(resultUrl); resultUrl = null;
+  revoke(originalUrl); originalUrl = null;
+  revoke(processingPreviewUrl); processingPreviewUrl = null;
+  $("choose").disabled = true;
+  $("choose").textContent = "Finishing cancellation…";
+  processingBlob = null; alphaBlob = null; resultBlob = null;
+  $("fileInput").value = "";
+  $("processingPreview").removeAttribute("src");
+  hide("processing"); hide("editor"); show("uploadView");
+}
 function applyZoom() { $("previewImg").style.transform = `scale(${zoom})`; $("originalImg").style.transform = `scale(${zoom})`; $("zoomText").textContent = Math.round(zoom * 100) + "%"; }
 
 $("choose").onclick = () => !busy && $("fileInput").click();
@@ -336,10 +419,36 @@ $("new").onclick = resetToUpload;
 
 $("download").onclick = async () => {
   if (busy || !resultBlob) return;
-  const scale = Number($("scale").value); const button = $("download"); button.disabled = true; button.textContent = scale === 4 ? "AI 4× processing…" : "Preparing PNG…";
+  const scale = Number($("scale").value);
+  const format = $("format").value;
+  const button = $("download");
+  button.disabled = true;
+  button.textContent = "Preparing…";
   try {
-    if (scale === 4) throw new Error("4× export is intentionally disabled in browser-only mode to prevent the machine from being overloaded. The 2× neural result is the safe maximum.");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(resultBlob); a.download = `cutout-pro-ai-${scale}x-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-  } catch (err) { showError(err?.message || "Export could not finish safely."); } finally { button.disabled = false; button.textContent = "Download PNG ↓"; }
+    const source = await createImageBitmap(resultBlob);
+    const pixels = source.width * source.height;
+    if (pixels > EXPORT_MAX_PIXELS) throw new Error("This export would exceed the browser safety pixel budget.");
+    const mime = format === "webp" ? "image/webp" : "image/png";
+    const ext = format === "webp" ? "webp" : "png";
+    const c = document.createElement("canvas"); c.width = source.width; c.height = source.height;
+    const ctx = c.getContext("2d", { alpha: true });
+    ctx.drawImage(source, 0, 0); source.close();
+    const blob = await canvasToBlob(c, mime, format === "webp" ? .94 : undefined);
+    c.width = 1; c.height = 1;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `cutout-pro-ai-${scale}x-${Date.now()}.${ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch (err) { showError(err?.message || "Export could not finish safely."); }
+  finally { button.disabled = false; button.textContent = "Download ↓"; }
 };
-$("theme").onclick = () => document.documentElement.classList.toggle("dark");
+$("theme").onclick = () => {
+  const dark = document.documentElement.classList.toggle("dark");
+  localStorage.setItem("cutout-pro-theme", dark ? "dark" : "light");
+};
+if (localStorage.getItem("cutout-pro-theme") === "dark") document.documentElement.classList.add("dark");
+window.addEventListener("pagehide", () => {
+  clearInterval(timerInt);
+  terminateNeuralWorker("Page closed.");
+  revoke(originalUrl); revoke(resultUrl); revoke(processingPreviewUrl);
+});

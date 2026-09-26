@@ -4,7 +4,7 @@ import "./style.css";
 const MAX_SOURCE_MB = 25;
 const MAX_SOURCE_PIXELS = 30_000_000;
 // Deliberately conservative: browser ML should never be allowed to consume the machine.
-const PROCESS_MAX_EDGE = 768;
+const PROCESS_MAX_EDGE = 640;
 const UPSCALE_TILE = 256;
 const EXPORT_MAX_PIXELS = 8_000_000;
 const app = document.querySelector("#app");
@@ -87,42 +87,89 @@ app.innerHTML = `
     </section>
 
     <section id="editor" class="editor hidden">
-      <div class="editor-head"><div><span class="glass-chip"><b>RESTORED</b><span>result ready</span></span><h2>One image. Three ways to inspect it.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
+      <div class="studio-toolbar liquid-glass" role="toolbar" aria-label="Editing tools">
+        <div class="studio-tool-group">
+          <button class="studio-tool active" data-editor-tool="cutout" type="button"><span>✦</span><b>Cutout</b></button>
+          <button class="studio-tool" data-editor-tool="background" type="button"><span>◒</span><b>Background</b></button>
+          <button class="studio-tool" data-editor-tool="effects" type="button"><span>●</span><b>Effects</b></button>
+          <button class="studio-tool" data-editor-tool="adjust" type="button"><span>◧</span><b>Adjust</b></button>
+          <button class="studio-tool" data-editor-tool="design" type="button"><span>◫</span><b>Design</b></button>
+        </div>
+        <div class="studio-actions">
+          <button id="compareTool" class="studio-icon" type="button" aria-label="Compare original and result">◫</button>
+          <button id="undoTool" class="studio-icon" type="button" aria-label="Undo mask edit">↶</button>
+          <button id="redoTool" class="studio-icon" type="button" aria-label="Redo mask edit">↷</button>
+          <button id="toolbarDownload" class="toolbar-download primary" type="button">Download <span>⌄</span></button>
+        </div>
+      </div>
+      <div id="toolDrawer" class="tool-drawer liquid-glass hidden" aria-live="polite">
+        <div id="adjustPanel" class="drawer-panel hidden">
+          <div><span class="eyebrow">ADJUST</span><strong>Fine tune the image</strong><small>Simple controls — no technical settings.</small></div>
+          <div class="drawer-controls">
+            <label><span>Brightness</span><output id="brightnessValue">100%</output><input id="brightnessControl" type="range" min="85" max="115" value="100"></label>
+            <label><span>Contrast</span><output id="contrastValue">100%</output><input id="contrastControl" type="range" min="85" max="120" value="100"></label>
+            <label><span>Saturation</span><output id="saturationValue">100%</output><input id="saturationControl" type="range" min="70" max="125" value="100"></label>
+            <button id="resetAdjust" class="ghost liquid-control" type="button">Reset</button>
+          </div>
+        </div>
+        <div id="effectsPanel" class="drawer-panel hidden">
+          <div><span class="eyebrow">EFFECTS</span><strong>Give the cutout a finish</strong><small>These are optional and never change the original AI mask.</small></div>
+          <div class="drawer-pills">
+            <label class="mini-toggle"><span>Natural shadow</span><input id="effectShadowToggle" type="checkbox"><i></i></label>
+            <label class="mini-range"><span>Shadow <output id="effectShadowValue">18%</output></span><input id="effectShadowStrength" type="range" min="0" max="60" value="18"></label>
+            <label class="mini-range"><span>Background blur <output id="effectBlurValue">14 px</output></span><input id="effectBlurStrength" type="range" min="0" max="40" value="14"></label>
+          </div>
+        </div>
+        <div id="designPanel" class="drawer-panel hidden">
+          <div><span class="eyebrow">DESIGN</span><strong>Choose the presentation</strong><small>Pick a background without opening a large settings panel.</small></div>
+          <div class="design-pills">
+            <button class="design-choice active" data-design-bg="checker" type="button">Transparent</button>
+            <button class="design-choice" data-design-bg="white" type="button">White</button>
+            <button class="design-choice" data-design-bg="dark" type="button">Dark</button>
+            <button class="design-choice" data-design-bg="gradient" type="button">Gradient</button>
+            <button class="design-choice" data-design-bg="blur" type="button">Original blur</button>
+          </div>
+        </div>
+      </div>
+      <div class="editor-head"><div><span class="glass-chip"><b>RESTORED</b><span>result ready</span></span><h2>Your cutout is ready.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
       <div class="canvas-card liquid-glass">
         <div class="canvas-head"><div class="tabs"><button class="tab active" data-mode="result">Enhanced</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Compare</button></div><div class="zoom"><button id="zoomOut">−</button><span id="zoomText">100%</span><button id="zoomIn">＋</button></div></div>
         <div id="preview" class="preview checker"><div id="splitPane"><img id="previewImg" alt="AI enhanced result"></div><img id="originalImg" class="original-img" alt="Original image"></div>
       </div>
       <div class="result-ribbon liquid-glass"><div class="ribbon-icon">✦</div><div><span class="eyebrow">RESTORATION REPORT</span><strong id="qualityTitle">Swin2SR neural reconstruction · 2×</strong><small id="qualityDetail">Neural reconstruction with transparent alpha compositing.</small></div><div id="qualityBadge" class="quality-badge"><span>✓</span> neural result</div></div>
-      <div class="tools">
-        <div class="tool-group liquid-glass"><label>PREVIEW SURFACE</label><div class="choices"><button class="choice selected" data-bg="checker">Transparent</button><button class="choice" data-bg="#ffffff">White</button><button class="choice" data-bg="#111827">Dark</button><button class="choice" data-bg="#dbeafe">Blue</button></div></div>
-        <div class="tool-group liquid-glass"><label>EXPORT</label><div class="select-row"><select id="scale"><option value="1">1× current enhanced</option><option value="2" selected>2× current AI result</option></select><button id="download" class="primary liquid-button">Preview export <span>↗</span></button></div></div>
+      <div class="quick-actions liquid-glass">
+        <div><span class="eyebrow">QUICK FINISH</span><h3>Ready to use</h3><p>Most images are finished here. Use advanced tools only when you need them.</p></div>
+        <div class="quick-buttons"><button class="quick-btn active" data-quick-bg="checker">Transparent</button><button class="quick-btn" data-quick-bg="white">White</button><button class="quick-btn" data-quick-bg="dark">Dark</button><button id="download" class="primary liquid-button">Preview & download <span>↗</span></button></div>
       </div>
-      <div class="mask-editor liquid-glass">
-        <div class="mask-head"><div><span class="eyebrow">CUTOUT EDITOR</span><h3>Refine the AI mask</h3><p>Paint corrections directly on the transparency mask. Your original AI result stays untouched until you apply.</p></div><div class="mask-status"><span class="mask-dot"></span><b id="maskStatus">AI mask ready</b></div></div>
-        <div class="mask-layout"><div class="mask-canvas-wrap checker" id="maskCanvasWrap"><canvas id="maskCanvas" aria-label="Editable cutout mask"></canvas><div id="maskCursor" class="mask-cursor" hidden></div></div><div class="mask-controls"><div class="mask-tools"><button class="mask-tool active" data-mask-tool="remove"><b>−</b><span>Remove</span><small>erase subject</small></button><button class="mask-tool" data-mask-tool="keep"><b>+</b><span>Keep</span><small>restore subject</small></button><button class="mask-tool" data-mask-tool="mask"><b>◐</b><span>Mask</span><small>inspect AI mask</small></button></div><label class="range-label"><span>Brush size</span><output id="brushSizeValue">36 px</output></label><input id="brushSize" type="range" min="8" max="120" value="36"><label class="range-label"><span>Edge softness</span><output id="edgeSoftnessValue">20%</output></label><input id="edgeSoftness" type="range" min="0" max="100" value="20"><div class="mask-actions"><button id="maskReset" class="ghost liquid-control">Reset mask</button><button id="maskApply" class="primary liquid-button">Apply correction <span>✓</span></button></div><div class="mask-hint"><span>Tip</span> Paint over hair, product edges, or small background fragments.</div></div></div>
-      </div>
-      <section class="background-studio liquid-glass">
-        <div class="background-head"><div><span class="eyebrow">PHASE 2 · BACKGROUND STUDIO</span><h3>Make the cutout feel finished</h3><p>Choose a presentation surface without changing your original transparent cutout.</p></div><span class="studio-badge"><i></i> non-destructive</span></div>
-        <div class="background-grid">
-          <div class="background-options">
-            <button class="background-option selected" data-background="checker" type="button"><span class="swatch checker"></span><b>Transparent</b><small>keep alpha</small></button>
-            <button class="background-option" data-background="white" type="button"><span class="swatch solid-white"></span><b>Clean white</b><small>studio look</small></button>
-            <button class="background-option" data-background="dark" type="button"><span class="swatch solid-dark"></span><b>Deep dark</b><small>high contrast</small></button>
-            <button class="background-option" data-background="gradient" type="button"><span class="swatch gradient-swatch"></span><b>Liquid gradient</b><small>soft color field</small></button>
-            <button class="background-option" data-background="blur" type="button"><span class="swatch blur-swatch"></span><b>Soft original</b><small>blurred scene</small></button>
-            <button class="background-option" data-background="custom" type="button"><span class="swatch image-swatch">＋</span><b>Custom image</b><small>use your photo</small></button>
-          </div>
-          <div class="background-settings">
-            <label class="toggle-row"><span><b>Natural shadow</b><small>Adds a subtle grounded shadow under the subject.</small></span><input id="shadowToggle" type="checkbox"><i></i></label>
-            <label class="range-label"><span>Shadow strength</span><output id="shadowValue">18%</output></label>
-            <input id="shadowStrength" type="range" min="0" max="40" value="18">
-            <label class="range-label"><span>Background blur</span><output id="blurValue">14 px</output></label>
-            <input id="blurStrength" type="range" min="0" max="32" value="14">
-            <input id="customBackgroundInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-            <button id="customBackgroundButton" class="ghost liquid-control" type="button">Choose background image</button>
+      <details class="advanced-section liquid-glass" id="advancedBackground">
+        <summary><span><b>Background Studio</b><small>Colors, custom image, blur and shadow</small></span><i>＋</i></summary>
+        <div class="details-body">
+          <div class="background-studio-inner">
+            <div class="background-options">
+              <button class="background-option selected" data-background="checker" type="button"><span class="swatch checker"></span><b>Transparent</b><small>keep alpha</small></button>
+              <button class="background-option" data-background="white" type="button"><span class="swatch solid-white"></span><b>Clean white</b><small>studio look</small></button>
+              <button class="background-option" data-background="dark" type="button"><span class="swatch solid-dark"></span><b>Deep dark</b><small>high contrast</small></button>
+              <button class="background-option" data-background="gradient" type="button"><span class="swatch gradient-swatch"></span><b>Liquid gradient</b><small>soft color field</small></button>
+              <button class="background-option" data-background="blur" type="button"><span class="swatch blur-swatch"></span><b>Soft original</b><small>blurred scene</small></button>
+              <button class="background-option" data-background="custom" type="button"><span class="swatch image-swatch">＋</span><b>Custom image</b><small>use your photo</small></button>
+            </div>
+            <div class="background-settings">
+              <label class="toggle-row"><span><b>Natural shadow</b><small>Lift the subject from the background</small></span><input id="shadowToggle" type="checkbox"><i></i></label>
+              <label class="range-label"><span>Shadow strength</span><output id="shadowValue">18%</output></label><input id="shadowStrength" type="range" min="0" max="60" value="18">
+              <label class="range-label"><span>Background blur</span><output id="blurValue">14 px</output></label><input id="blurStrength" type="range" min="0" max="40" value="14">
+              <button id="customBackgroundButton" class="ghost liquid-control" type="button">Choose background image</button>
+              <input id="customBackgroundInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            </div>
           </div>
         </div>
-      </section>
+      </details>
+      <details class="advanced-section liquid-glass" id="advancedMask">
+        <summary><span><b>Manual Cutout Editor</b><small>Fix small missed background areas or restore details</small></span><i>＋</i></summary>
+        <div class="details-body">
+          <div class="mask-head"><div><span class="eyebrow">ADVANCED</span><h3>Fine-tune the mask</h3><p>The automatic result is kept as your reset point.</p></div><div class="mask-status"><span class="mask-dot"></span><b id="maskStatus">AI mask ready</b></div></div>
+          <div class="mask-layout"><div class="mask-canvas-wrap checker" id="maskCanvasWrap"><canvas id="maskCanvas" aria-label="Editable cutout mask"></canvas><div id="maskCursor" class="mask-cursor" hidden></div></div><div class="mask-controls"><div class="mask-tools"><button class="mask-tool active" data-mask-tool="remove"><b>−</b><span>Remove</span><small>erase subject</small></button><button class="mask-tool" data-mask-tool="keep"><b>+</b><span>Keep</span><small>restore subject</small></button><button class="mask-tool" data-mask-tool="mask"><b>◐</b><span>Mask</span><small>inspect AI mask</small></button></div><label class="range-label"><span>Brush size</span><output id="brushSizeValue">36 px</output></label><input id="brushSize" type="range" min="8" max="120" value="36"><label class="range-label"><span>Edge softness</span><output id="edgeSoftnessValue">20%</output></label><input id="edgeSoftness" type="range" min="0" max="100" value="20"><div class="mask-actions"><button id="maskReset" class="ghost liquid-control">Reset mask</button><button id="maskApply" class="primary liquid-button">Apply correction <span>✓</span></button></div><div class="mask-hint"><span>Tip</span> Use Remove for leftover background and Keep for missing subject detail.</div></div></div>
+        </div>
+      </details>
       <div class="extras"><div class="extra liquid-glass"><b>Source</b><span id="sourceInfo"></span></div><div class="extra liquid-glass"><b>Pipeline</b><span>AI mask → precision cleanup → alpha compositing</span></div><div class="extra liquid-glass"><b>Runtime</b><span id="runtimeInfo"></span></div></div>
       <p class="disclaimer">Super-resolution reconstructs plausible fine detail; it cannot recover missing information with certainty. Cutout Pro uses neural reconstruction rather than ordinary browser enlargement.</p>
     </section>
@@ -136,6 +183,8 @@ let file, processingBlob, originalUrl, resultUrl, resultBlob, alphaBlob;
 let elapsed = 0, timerInt, zoom = 1, busy = false, jobToken = 0, activeTool = "remove", exportFormat = "png";
 let backgroundMode = "checker", customBackgroundBlob = null, customBackgroundUrl = null, renderedExportBlob = null, renderedPreviewUrl = null;
 let shadowEnabled = false, shadowStrength = 18, backgroundBlur = 14;
+let adjustBrightness = 100, adjustContrast = 100, adjustSaturation = 100;
+let maskHistory = [], maskRedo = [];
 let maskCanvas, maskCtx, maskLayerCanvas, maskLayerCtx, enhancedSourceBlob, maskOriginalBlob, maskPainting = false, maskTool = "remove";
 
 const yieldToBrowser = () => new Promise(resolve => {
@@ -201,8 +250,17 @@ function warmupNeuralWorker() {
   callNeuralWorker({ type: "warmup" }).catch(() => {});
 }
 
-function show(id) { $(id).classList.remove("hidden"); }
-function hide(id) { $(id).classList.add("hidden"); }
+function show(id) {
+  $(id).classList.remove("hidden");
+  if(id === "editor") {
+    document.body.classList.add("editor-active");
+    requestAnimationFrame(() => window.scrollTo({top:0,left:0,behavior:"instant"}));
+  }
+}
+function hide(id) {
+  $(id).classList.add("hidden");
+  if(id === "editor") document.body.classList.remove("editor-active");
+}
 function setStage(n) {
   for (let i = 1; i <= 5; i++) {
     const el = $("stage" + i);
@@ -292,26 +350,49 @@ async function upscaleTiled(sourceBlob, token) {
   return { blob, width: width * 2, height: height * 2 };
 }
 
-async function compositeWithAlpha(rgbBlob, maskBlob, width, height) {
+async function compositeWithAlpha(rgbBlob, maskBlob, width, height, cleanEdges = true) {
   const rgb = await createImageBitmap(rgbBlob);
   const mask = await createImageBitmap(maskBlob);
   const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
-  const ctx = canvas.getContext("2d", { alpha: true });
+  const ctx = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
   ctx.drawImage(rgb, 0, 0, width, height);
-  ctx.globalCompositeOperation = "destination-in";
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(mask, 0, 0, width, height);
-  ctx.globalCompositeOperation = "source-over";
+  if (!cleanEdges) {
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(mask, 0, 0, width, height);
+    ctx.globalCompositeOperation = "source-over";
+  } else {
+    const pixels = ctx.getImageData(0, 0, width, height);
+    const matte = document.createElement("canvas"); matte.width = width; matte.height = height;
+    const mx = matte.getContext("2d", { willReadFrequently: true });
+    mx.drawImage(mask, 0, 0, width, height);
+    const md = mx.getImageData(0, 0, width, height).data;
+    const src = new Uint8ClampedArray(pixels.data);
+    const alphaAt = (x,y) => md[(y*width+x)*4+3];
+    for(let y=0;y<height;y++){
+      for(let x=0;x<width;x++){
+        const i=(y*width+x)*4, a=alphaAt(x,y);
+        if(a < 34){ pixels.data[i]=0; pixels.data[i+1]=0; pixels.data[i+2]=0; pixels.data[i+3]=0; continue; }
+        if(a < 238){
+          let bestA=a,bx=x,by=y;
+          const n=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+          for(const [xx,yy] of n){ if(xx<0||yy<0||xx>=width||yy>=height) continue; const aa=alphaAt(xx,yy); if(aa>bestA){bestA=aa;bx=xx;by=yy;} }
+          if(bestA > a+10){ const bi=(by*width+bx)*4; pixels.data[i]=src[bi]; pixels.data[i+1]=src[bi+1]; pixels.data[i+2]=src[bi+2]; }
+          pixels.data[i+3] = a < 150 ? Math.round(a*.42) : a < 215 ? Math.round(a*.68) : Math.round(a*.86);
+        }
+      }
+    }
+    ctx.putImageData(pixels,0,0); matte.width=1; matte.height=1;
+  }
   rgb.close(); mask.close();
-  const blob = await canvasToBlob(canvas);
-  canvas.width = 1; canvas.height = 1;
+  const blob = await canvasToBlob(canvas); canvas.width = 1; canvas.height = 1;
   return blob;
 }
 
 async function setupMaskEditor(enhancedBlob, refinedMask) {
   enhancedSourceBlob = enhancedBlob; maskOriginalBlob = refinedMask;
   const img = await createImageBitmap(enhancedBlob); const mask = await createImageBitmap(refinedMask);
-  maskCanvas = $("maskCanvas"); maskCanvas.width = img.width; maskCanvas.height = img.height;
+  maskCanvas = $("maskCanvas"); maskCanvas.width = img.width; maskHistory=[]; maskRedo=[]; updateHistoryButtons(); maskCanvas.height = img.height;
   maskCtx = maskCanvas.getContext("2d", { alpha: true, willReadFrequently: true });
   maskLayerCanvas = document.createElement("canvas"); maskLayerCanvas.width = img.width; maskLayerCanvas.height = img.height;
   maskLayerCtx = maskLayerCanvas.getContext("2d", { alpha: true, willReadFrequently: true });
@@ -328,6 +409,16 @@ async function renderMaskPreview() {
   maskCtx.globalCompositeOperation="source-over"; img.close();
 }
 function maskPoint(e) { const r=maskCanvas.getBoundingClientRect(); return {x:Math.max(0,Math.min(maskCanvas.width,(e.clientX-r.left)*maskCanvas.width/r.width)), y:Math.max(0,Math.min(maskCanvas.height,(e.clientY-r.top)*maskCanvas.height/r.height))}; }
+function saveMaskHistory(){
+  if(!maskLayerCtx || !maskCanvas) return;
+  const snap=maskLayerCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height);
+  maskHistory.push(snap); if(maskHistory.length>6) maskHistory.shift(); maskRedo=[]; updateHistoryButtons();
+}
+function restoreMaskSnapshot(snap){ if(!snap||!maskLayerCtx) return; maskLayerCtx.putImageData(snap,0,0); renderMaskPreview(); updateHistoryButtons(); }
+function updateHistoryButtons(){ const u=$("undoTool"), r=$("redoTool"); if(u){u.disabled=!maskHistory.length;u.classList.toggle("disabled",!maskHistory.length);} if(r){r.disabled=!maskRedo.length;r.classList.toggle("disabled",!maskRedo.length);} }
+function undoMask(){ if(!maskHistory.length)return; const current=maskLayerCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height); maskRedo.push(current); const snap=maskHistory.pop(); restoreMaskSnapshot(snap); }
+function redoMask(){ if(!maskRedo.length)return; const current=maskLayerCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height); maskHistory.push(current); const snap=maskRedo.pop(); restoreMaskSnapshot(snap); }
+
 function paintMask(e) {
   if (!maskCanvas || !maskLayerCtx || !maskPainting || maskTool === "mask") return; const p=maskPoint(e); const scale=maskCanvas.width/maskCanvas.getBoundingClientRect().width; const radius=Number($("brushSize").value)*scale/2; const softness=Number($("edgeSoftness").value)/100;
   const g=maskLayerCtx.createRadialGradient(p.x,p.y,radius*Math.max(.05,softness),p.x,p.y,radius); const keep=maskTool==="keep"; g.addColorStop(0,keep?"rgba(255,255,255,1)":"rgba(0,0,0,1)"); g.addColorStop(1,keep?"rgba(255,255,255,0)":"rgba(0,0,0,0)");
@@ -342,7 +433,7 @@ async function resetMaskEditor() { if(!enhancedSourceBlob||!maskOriginalBlob)ret
 
 function setTool(tool){ activeTool=tool; document.querySelectorAll(".tool-choice").forEach(b=>b.classList.toggle("active",b.dataset.tool===tool)); const labels={remove:["REMOVE BACKGROUND","Pure subject isolation","The AI is building a clean alpha matte — no enhancement pass."],enhance:["ENHANCE IMAGE","Detail reconstruction","The AI is rebuilding fine detail while preserving the original scene."],both:["FULL RESTORATION","Remove + enhance","Subject isolation followed by memory-safe neural reconstruction."]}; const x=labels[tool]; $("processEyebrow").textContent=x[0]; $("processTitle").textContent=x[1]; $("processSub").textContent=x[2]; document.body.dataset.tool=tool; $("processing").dataset.tool=tool; if(tool==="remove"){ $("stage3").querySelector("b").textContent="Reveal"; $("stage3").querySelector("small").textContent="live cutout"; $("stage4").querySelector("b").textContent="Polish"; $("stage4").querySelector("small").textContent="edge alpha"; } else { $("stage3").querySelector("b").textContent="Rebuild"; $("stage3").querySelector("small").textContent="neural detail"; $("stage4").querySelector("b").textContent="Refine"; $("stage4").querySelector("small").textContent="edge alpha"; } }
 
-function chooseRemovalModel(){ return navigator.gpu ? "isnet" : "isnet_quint8"; }
+function chooseRemovalModel(){ return navigator.gpu ? "isnet_fp16" : "isnet_quint8"; }
 
 async function runBackgroundRemoval(blob, token) {
   const primary = chooseRemovalModel();
@@ -351,8 +442,8 @@ async function runBackgroundRemoval(blob, token) {
   try { return await removeBackground(blob, config); }
   catch (err) {
     if(primary !== "isnet_fp16") throw err;
-    $("processSub").textContent = "Precision model hit a device limit · switching to the lighter AI model safely…";
-    return await removeBackground(blob, { ...config, model: "isnet_fp16" });
+    $("processSub").textContent = "GPU model hit a device limit · switching to the safe CPU model…";
+    return await removeBackground(blob, { ...config, model: "isnet_quint8", device: "cpu" });
   }
 }
 
@@ -381,14 +472,14 @@ async function start(f) {
       if (token !== jobToken) return;
       $("previewState").textContent = "AI matte generated · revealing cutout";
       if (activeTool === "remove") {
-        const liveCutout = await compositeWithAlpha(processingBlob, alphaBlob, prepared.width, prepared.height);
+        const liveCutout = await compositeWithAlpha(processingBlob, alphaBlob, prepared.width, prepared.height, false);
         const liveUrl = URL.createObjectURL(liveCutout);
         $("processingPreview").src = liveUrl;
         $("processingPreview").classList.remove("mask-preview");
         await nextFrame();
         $("cutoutReveal").classList.add("active");
         $("cutoutReveal").style.width = "100%";
-        await new Promise(r=>setTimeout(r,720));
+        await new Promise(r=>setTimeout(r,180));
         URL.revokeObjectURL(liveUrl);
       } else {
         const maskUrl = URL.createObjectURL(alphaBlob);
@@ -397,7 +488,7 @@ async function start(f) {
         await nextFrame();
         $("cutoutReveal").classList.add("active");
         $("cutoutReveal").style.width = "100%";
-        await new Promise(r=>setTimeout(r,720));
+        await new Promise(r=>setTimeout(r,180));
         URL.revokeObjectURL(maskUrl);
         $("processingPreview").classList.remove("mask-preview");
         $("processingPreview").src = originalUrl;
@@ -422,8 +513,10 @@ async function start(f) {
     await yieldToBrowser();
 
     setStage(activeTool === "remove" ? 4 : 4); $("processTitle").textContent = "Refining the cutout edge…"; $("processSub").textContent = "Cleaning the matte and preserving soft subject boundaries."; await nextFrame();
-    const refinedMask = await refineAlphaMask(await resizeAlphaBlob(alphaBlob, enhanced.width, enhanced.height));
+    const resizedMask = await resizeAlphaBlob(alphaBlob, enhanced.width, enhanced.height);
+    const refinedMask = activeTool === "remove" ? resizedMask : await refineAlphaMask(resizedMask);
     await setupMaskEditor(enhanced.blob, refinedMask);
+    URL.revokeObjectURL(enhancedUrl);
     await yieldToBrowser();
 
     setStage(5); $("processTitle").textContent = activeTool === "remove" ? "The background is gone." : "Compositing your result…"; $("processSub").textContent = activeTool === "remove" ? "Your original pixels are preserved; only the background alpha has changed." : "Applying transparency without a giant pixel-by-pixel loop."; await nextFrame();
@@ -436,7 +529,7 @@ async function start(f) {
     $("qualityDetail").textContent = activeTool === "remove" ? `Foreground matte generated with ${chooseRemovalModel()} and refined alpha compositing.` : "Neural reconstruction with transparent alpha compositing.";
     $("qualityBadge").innerHTML = activeTool === "remove" ? "<span>✓</span> cutout ready" : "<span>✓</span> neural result";
     $("sourceInfo").textContent = `${f.name} · ${prepared.original.width} × ${prepared.original.height}px · ${(f.size / 1024 / 1024).toFixed(2)} MB`;
-    hide("processing"); show("editor"); applyZoom();
+    hide("processing"); show("editor"); setPreviewMode("split"); applyZoom();
   } catch (err) {
     console.error("Cutout Pro processing error:", err); clearInterval(timerInt);
     if (err?.name !== "AbortError") showError(err?.message || "The browser could not complete this image safely.");
@@ -446,16 +539,27 @@ async function start(f) {
 async function createOpaqueMask(w,h){ const c=document.createElement("canvas"); c.width=w;c.height=h; const x=c.getContext("2d"); x.fillStyle="#fff";x.fillRect(0,0,w,h); const out=await canvasToBlob(c); c.width=1;c.height=1; return out; }
 
 async function refineAlphaMask(blob){
-  const c=await blobToCanvas(blob); const o=document.createElement("canvas"); o.width=c.width; o.height=c.height;
-  const x=o.getContext("2d",{willReadFrequently:true}); x.filter="blur(.55px)"; x.drawImage(c,0,0); x.filter="none";
-  const d=x.getImageData(0,0,o.width,o.height);
-  for(let i=0;i<d.data.length;i+=4){
-    const a=d.data[i];
-    // Remove faint background haze while preserving the mid-alpha pixels that carry hair/fur/soft edges.
-    const t=a<18?0:a>246?255:Math.round(((a-18)/228)*255);
-    d.data[i]=255; d.data[i+1]=255; d.data[i+2]=255; d.data[i+3]=Math.max(0,Math.min(255,t));
-  }
-  x.putImageData(d,0,0); c.width=1;c.height=1; const out=await canvasToBlob(o); o.width=1;o.height=1; return out;
+  const c=await blobToCanvas(blob); const w=c.width,h=c.height;
+  const ctx=c.getContext("2d",{willReadFrequently:true});
+  const src=ctx.getImageData(0,0,w,h).data;
+  const out=document.createElement("canvas"); out.width=w; out.height=h;
+  const ox=out.getContext("2d",{willReadFrequently:true}); const dst=ox.createImageData(w,h);
+  const aAt=(x,y)=>src[(y*w+x)*4+3];
+  for(let y=0;y<h;y++){ for(let x=0;x<w;x++){
+    const i=(y*w+x)*4, a=aAt(x,y);
+    dst.data[i]=255; dst.data[i+1]=255; dst.data[i+2]=255;
+    if(a<28){dst.data[i+3]=0;continue;}
+    let localMin=a, localMax=a;
+    for(let oy=-1;oy<=1;oy++) for(let oxi=-1;oxi<=1;oxi++){
+      const xx=x+oxi,yy=y+oy; if(xx<0||yy<0||xx>=w||yy>=h) continue;
+      const aa=aAt(xx,yy); localMin=Math.min(localMin,aa); localMax=Math.max(localMax,aa);
+    }
+    let clean=a;
+    if(a<245 && localMax-a>16) clean=Math.round(a*.64+localMin*.36);
+    if(clean<42) clean=0;
+    dst.data[i+3]=Math.max(0,Math.min(255,clean));
+  }}
+  ox.putImageData(dst,0,0); c.width=1;c.height=1; const outBlob=await canvasToBlob(out); out.width=1;out.height=1; return outBlob;
 }
 
 async function resizeAlphaBlob(blob, w, h) {
@@ -485,13 +589,13 @@ async function renderBackgroundComposite() {
     sx.globalCompositeOperation="source-in"; sx.fillStyle=`rgba(20,30,35,${shadowStrength/100})`; sx.fillRect(0,0,w,h);
     x.save(); x.filter=`blur(${Math.max(2,Math.round(w*.006))}px)`; x.globalAlpha=.55; x.drawImage(sc,Math.round(w*.018),Math.round(h*.035)); x.restore(); sc.width=1;sc.height=1;
   }
-  x.drawImage(subject,0,0); subject.close();
+  x.save(); x.filter=`brightness(${adjustBrightness}%) contrast(${adjustContrast}%) saturate(${adjustSaturation}%)`; x.drawImage(subject,0,0); x.restore(); subject.close();
   renderedExportBlob=await canvasToBlob(c); c.width=1;c.height=1;
   revoke(renderedPreviewUrl); renderedPreviewUrl=URL.createObjectURL(renderedExportBlob);
   $("previewImg").src=renderedPreviewUrl;
 }
 
-async function updateBackgroundMode(mode){ backgroundMode=mode; document.querySelectorAll(".background-option").forEach(b=>b.classList.toggle("selected",b.dataset.background===mode)); await renderBackgroundComposite(); }
+async function updateBackgroundMode(mode){ backgroundMode=mode; document.querySelectorAll(".background-option").forEach(b=>b.classList.toggle("selected",b.dataset.background===mode)); document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(b=>b.classList.toggle("active",b.dataset.quickBg===mode)); await renderBackgroundComposite(); }
 
 function showError(message) {
   hide("editor"); show("processing"); $("processBadge").textContent = "SAFE RETRY"; $("processTitle").textContent = "The image was not completed"; $("processSub").textContent = message; $("tip").textContent = "Cutout Pro stopped the job instead of continuing to consume memory. Try a smaller image if the browser reports a resource limit."; $("bar").style.width = "0%";
@@ -506,8 +610,9 @@ $("processingNew").onclick = resetToUpload;
 ["dragleave", "drop"].forEach(x => $("dropzone").addEventListener(x, e => { e.preventDefault(); $("dropzone").classList.remove("drag"); }));
 $("dropzone").addEventListener("drop", e => { if (busy) return; const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) start(f); });
 
-document.querySelectorAll(".choice").forEach(b => b.onclick = () => { document.querySelectorAll(".choice").forEach(x => x.classList.remove("selected")); b.classList.add("selected"); const v = b.dataset.bg; $("preview").style.background = v === "checker" ? "" : v; $("preview").classList.toggle("checker", v === "checker"); });
-document.querySelectorAll(".tab").forEach(b => b.onclick = () => { document.querySelectorAll(".tab").forEach(x => x.classList.remove("active")); b.classList.add("active"); const m = b.dataset.mode; $("originalImg").style.display = m === "original" || m === "split" ? "block" : "none"; $("splitPane").style.display = m === "original" ? "none" : "block"; $("preview").classList.toggle("split", m === "split"); applyZoom(); });
+document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(b=>b.onclick=async()=>{ document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(x=>x.classList.remove("active")); b.classList.add("active"); await updateBackgroundMode(b.dataset.quickBg); });
+function setPreviewMode(m){ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===m)); $("originalImg").style.display=m==="original"||m==="split"?"block":"none"; $("splitPane").style.display=m==="original"?"none":"block"; $("preview").classList.toggle("split",m==="split"); $("preview").dataset.mode=m; applyZoom(); }
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>setPreviewMode(b.dataset.mode));
 $("zoomIn").onclick = () => { zoom = Math.min(2, zoom + .1); applyZoom(); }; $("zoomOut").onclick = () => { zoom = Math.max(.5, zoom - .1); applyZoom(); };
 $("new").onclick = resetToUpload;
 
@@ -519,7 +624,7 @@ $("download").onclick = openExportPreview; $("exportConfirm").onclick=confirmExp
 document.querySelectorAll(".mask-tool").forEach(b=>b.onclick=async()=>{ document.querySelectorAll(".mask-tool").forEach(x=>x.classList.remove("active")); b.classList.add("active"); maskTool=b.dataset.maskTool; await renderMaskPreview(); $("maskCanvas").classList.toggle("mask-only",maskTool==="mask"); });
 $("brushSize").oninput=e=>$("brushSizeValue").textContent=`${e.target.value} px`;
 $("edgeSoftness").oninput=e=>$("edgeSoftnessValue").textContent=`${e.target.value}%`;
-$("maskCanvas").addEventListener("pointerdown",e=>{ if(maskTool==="mask")return; maskPainting=true; e.currentTarget.setPointerCapture(e.pointerId); paintMask(e); });
+$("maskCanvas").addEventListener("pointerdown",e=>{ if(maskTool==="mask")return; saveMaskHistory(); maskPainting=true; e.currentTarget.setPointerCapture(e.pointerId); paintMask(e); });
 $("maskCanvas").addEventListener("pointermove",e=>{ const r=e.currentTarget.getBoundingClientRect(), c=$("maskCursor"), size=Number($("brushSize").value); c.style.width=`${size}px`; c.style.height=`${size}px`; c.style.left=`${e.clientX-r.left-size/2}px`; c.style.top=`${e.clientY-r.top-size/2}px`; c.hidden=false; if(maskPainting)paintMask(e); });
 $("maskCanvas").addEventListener("pointerup",e=>{maskPainting=false;try{e.currentTarget.releasePointerCapture(e.pointerId)}catch{}}); $("maskCanvas").addEventListener("pointerleave",()=>{maskPainting=false;$("maskCursor").hidden=true;});
 $("maskApply").onclick=applyMaskCorrection; $("maskReset").onclick=resetMaskEditor;
@@ -530,4 +635,26 @@ $("blurStrength").oninput=e=>{$("blurValue").textContent=`${e.target.value} px`;
 $("customBackgroundButton").onclick=()=>$("customBackgroundInput").click();
 $("customBackgroundInput").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>MAX_SOURCE_MB*1024*1024){showError("That background image is larger than 25 MB. Choose a smaller image.");return;}revoke(customBackgroundUrl);customBackgroundBlob=f;customBackgroundUrl=URL.createObjectURL(f);await updateBackgroundMode("custom");};
 
+
+function setEditorTool(tool){
+  document.querySelectorAll(".studio-tool").forEach(b=>b.classList.toggle("active",b.dataset.editorTool===tool));
+  const drawer=$("toolDrawer"), panels={effects:$("effectsPanel"),adjust:$("adjustPanel"),design:$("designPanel")};
+  Object.values(panels).forEach(p=>p?.classList.add("hidden"));
+  if(tool==="cutout"){ $("advancedMask").open=true; drawer.classList.add("hidden"); $("advancedMask").scrollIntoView({behavior:"smooth",block:"nearest"}); return; }
+  if(tool==="background"){ $("advancedBackground").open=true; drawer.classList.add("hidden"); $("advancedBackground").scrollIntoView({behavior:"smooth",block:"nearest"}); return; }
+  drawer.classList.remove("hidden"); panels[tool]?.classList.remove("hidden");
+}
+document.querySelectorAll(".studio-tool").forEach(b=>b.onclick=()=>setEditorTool(b.dataset.editorTool));
+$("compareTool").onclick=()=>setPreviewMode("split");
+$("toolbarDownload").onclick=openExportPreview;
+$("undoTool").onclick=undoMask; $("redoTool").onclick=redoMask; updateHistoryButtons();
+function updateAdjust(){ [$("brightnessValue"),$("contrastValue"),$("saturationValue")].forEach((o,i)=>o.textContent=[adjustBrightness,adjustContrast,adjustSaturation][i]+"%"); renderBackgroundComposite(); }
+$("brightnessControl").oninput=e=>{adjustBrightness=Number(e.target.value);updateAdjust();};
+$("contrastControl").oninput=e=>{adjustContrast=Number(e.target.value);updateAdjust();};
+$("saturationControl").oninput=e=>{adjustSaturation=Number(e.target.value);updateAdjust();};
+$("resetAdjust").onclick=()=>{adjustBrightness=adjustContrast=adjustSaturation=100;["brightnessControl","contrastControl","saturationControl"].forEach(id=>$(id).value=100);updateAdjust();};
+$("effectShadowToggle").onchange=e=>{$("shadowToggle").checked=e.target.checked;shadowEnabled=e.target.checked;renderBackgroundComposite();};
+$("effectShadowStrength").oninput=e=>{$("shadowStrength").value=e.target.value;shadowStrength=Number(e.target.value);$("effectShadowValue").textContent=e.target.value+"%";if(shadowEnabled)renderBackgroundComposite();};
+$("effectBlurStrength").oninput=e=>{$("blurStrength").value=e.target.value;backgroundBlur=Number(e.target.value);$("effectBlurValue").textContent=e.target.value+" px";if(backgroundMode==="blur"||backgroundMode==="custom")renderBackgroundComposite();};
+document.querySelectorAll(".design-choice").forEach(b=>b.onclick=async()=>{document.querySelectorAll(".design-choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");await updateBackgroundMode(b.dataset.designBg);});
 $("theme").onclick = () => document.documentElement.classList.toggle("dark");

@@ -4,7 +4,9 @@ import "./style.css";
 const MAX_SOURCE_MB = 25;
 const MAX_SOURCE_PIXELS = 30_000_000;
 // Deliberately conservative: browser ML should never be allowed to consume the machine.
-const PROCESS_MAX_EDGE = 640;
+const PROCESS_MAX_EDGE = 768;
+const PRECISION_MAX_EDGE = 1280;
+const PRECISION_CROP_MARGIN = 0.16;
 const UPSCALE_TILE = 256;
 const EXPORT_MAX_PIXELS = 8_000_000;
 const app = document.querySelector("#app");
@@ -446,24 +448,76 @@ function setTool(tool){ activeTool=tool; document.querySelectorAll(".tool-choice
 
 function chooseRemovalModel(){ return navigator.gpu ? "isnet_fp16" : "isnet_quint8"; }
 
-async function maskNeedsPrecisionPass(maskBlob){
-  const c = await blobToCanvas(maskBlob);
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  const d = ctx.getImageData(0,0,c.width,c.height).data;
-  const sx = Math.max(1, Math.floor(c.width / 96));
-  const sy = Math.max(1, Math.floor(c.height / 96));
-  let samples = 0, uncertain = 0, border = 0, foreground = 0;
-  for(let y=0;y<c.height;y+=sy){
-    for(let x=0;x<c.width;x+=sx){
-      const a=d[(y*c.width+x)*4+3]; samples++;
-      if(a>245) foreground++;
-      if(a>20 && a<235) uncertain++;
-      if((x < c.width*.035 || x > c.width*.965 || y < c.height*.035 || y > c.height*.965) && a>32) border++;
-    }
+async function inspectMask(maskBlob){
+  const c=await blobToCanvas(maskBlob);
+  const ctx=c.getContext("2d",{willReadFrequently:true});
+  const w=c.width,h=c.height,d=ctx.getImageData(0,0,w,h).data;
+  let soft=0, edge=0, fg=0, n=0, minX=w, minY=h, maxX=-1, maxY=-1;
+  const step=Math.max(1,Math.floor(Math.min(w,h)/140));
+  for(let y=0;y<h;y+=step) for(let x=0;x<w;x+=step){
+    const i=(y*w+x)*4,a=d[i+3]; n++;
+    if(a>20){ fg++; minX=Math.min(minX,x); minY=Math.min(minY,y); maxX=Math.max(maxX,x); maxY=Math.max(maxY,y); }
+    if(a>24 && a<232) soft++;
+    if(x<step*2||y<step*2||x>=w-step*2||y>=h-step*2) if(a>35) edge++;
   }
   c.width=1;c.height=1;
-  const fg=foreground/Math.max(samples,1), soft=uncertain/Math.max(samples,1), edge=border/Math.max(samples,1);
-  return (edge > .012 && fg < .86) || soft > .22 || fg > .94;
+  const softRate=soft/Math.max(n,1), edgeRate=edge/Math.max(n,1), fgRate=fg/Math.max(n,1);
+  const bbox=maxX>=0 ? {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1} : null;
+  const subjectRate=bbox ? (bbox.w*bbox.h)/(w*h) : 1;
+  return {softRate,edgeRate,fgRate,subjectRate,bbox,width:w,height:h,
+    difficult:(edgeRate>.008 && fgRate<.92) || softRate>.16 || subjectRate<.48 || fgRate>.96};
+}
+
+async function maskNeedsPrecisionPass(maskBlob){ return (await inspectMask(maskBlob)).difficult; }
+
+async function cropImageBlob(blob, rect){
+  const bitmap=await createImageBitmap(blob);
+  const x=Math.max(0,Math.floor(rect.x)), y=Math.max(0,Math.floor(rect.y));
+  const w=Math.min(bitmap.width-x,Math.max(1,Math.floor(rect.w))), h=Math.min(bitmap.height-y,Math.max(1,Math.floor(rect.h)));
+  const c=document.createElement("canvas"); c.width=w;c.height=h;
+  const ctx=c.getContext("2d",{alpha:true}); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality="high";
+  ctx.drawImage(bitmap,x,y,w,h,0,0,w,h); bitmap.close();
+  const out=await canvasToBlob(c); c.width=1;c.height=1; return {blob:out,x,y,w,h};
+}
+
+async function scaleCropForPrecision(crop){
+  const maxEdge=Math.max(crop.w,crop.h);
+  if(maxEdge>=PRECISION_MAX_EDGE) return crop;
+  const scale=PRECISION_MAX_EDGE/maxEdge;
+  const bm=await createImageBitmap(crop.blob);
+  const c=document.createElement("canvas"); c.width=Math.round(crop.w*scale); c.height=Math.round(crop.h*scale);
+  const x=c.getContext("2d",{alpha:true}); x.imageSmoothingEnabled=true; x.imageSmoothingQuality="high"; x.drawImage(bm,0,0,c.width,c.height); bm.close();
+  const out=await canvasToBlob(c); c.width=1;c.height=1;
+  return {...crop,blob:out,w:Math.round(crop.w*scale),h:Math.round(crop.h*scale),scale};
+}
+
+async function pasteMaskIntoCanvas(cropMask, fullW, fullH, rect){
+  const full=document.createElement("canvas"); full.width=fullW; full.height=fullH;
+  const ctx=full.getContext("2d",{alpha:true}); ctx.clearRect(0,0,fullW,fullH);
+  const mask=await createImageBitmap(cropMask);
+  ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality="high";
+  ctx.drawImage(mask,0,0,mask.width,mask.height,rect.x,rect.y,rect.w,rect.h); mask.close();
+  const out=await canvasToBlob(full); full.width=1;full.height=1; return out;
+}
+
+async function focusedPrecisionPass(sourceBlob, firstMask, token){
+  const stats=await inspectMask(firstMask);
+  if(!stats.bbox) return null;
+  const mx=Math.round(stats.bbox.w*PRECISION_CROP_MARGIN), my=Math.round(stats.bbox.h*PRECISION_CROP_MARGIN);
+  const baseRect={
+    x:Math.max(0,stats.bbox.x-mx), y:Math.max(0,stats.bbox.y-my),
+    w:Math.min(stats.width,stats.bbox.w+mx*2), h:Math.min(stats.height,stats.bbox.h+my*2)
+  };
+  const crop=await cropImageBlob(sourceBlob,baseRect);
+  const scaled=await scaleCropForPrecision(crop);
+  if(token!==jobToken) throw new DOMException("Cancelled","AbortError");
+  const config={proxyToWorker:true,output:{format:"image/png",type:"mask"},progress:(key,current,total)=>{
+    if(token===jobToken && key.includes("inference")) $("signalMask").textContent=`focus ${Math.round((current/Math.max(total,1))*100)}%`;
+  }};
+  const mask=await removeBackground(scaled.blob,{...config,model:navigator.gpu?"isnet":"isnet_quint8",device:navigator.gpu?"gpu":"cpu"});
+  if(token!==jobToken) throw new DOMException("Cancelled","AbortError");
+  const rect={x:baseRect.x,y:baseRect.y,w:baseRect.w,h:baseRect.h};
+  return await pasteMaskIntoCanvas(mask,stats.width,stats.height,rect);
 }
 
 async function runBackgroundRemoval(blob, token) {
@@ -473,17 +527,15 @@ async function runBackgroundRemoval(blob, token) {
   try {
     const first = await removeBackground(blob, config);
     if(token !== jobToken) throw new DOMException("Cancelled", "AbortError");
-    if(primary === "isnet_fp16" && await maskNeedsPrecisionPass(first)) {
-      $("processSub").textContent = "This image has a difficult edge · running a precision matte pass…";
-      $("signalMask").textContent = "precision pass";
+    const stats=await inspectMask(first);
+    const shouldRefine=await maskNeedsPrecisionPass(first);
+    if(primary === "isnet_fp16" && shouldRefine) {
+      $("processSub").textContent = stats.subjectRate < .48 ? "The subject is small in the frame · focusing the AI on the subject for a cleaner matte…" : "This image has difficult edges · running a focused high-resolution matte pass…";
+      $("signalMask").textContent = "focus pass";
       try {
-        const precision = await removeBackground(blob, { ...config, model: "isnet", device: "gpu" });
-        if(token !== jobToken) throw new DOMException("Cancelled", "AbortError");
-        return { blob: precision, model: "isnet", precision: true };
-      } catch (precisionError) {
-        console.warn("Precision pass unavailable; keeping the fast matte.", precisionError);
-        return { blob: first, model: primary, precision: false };
-      }
+        const focused=await focusedPrecisionPass(blob,first,token);
+        if(focused) return {blob:focused,model:"isnet + focused",precision:true};
+      } catch(e) { console.warn("Focused precision pass unavailable; keeping primary matte.",e); }
     }
     return { blob: first, model: primary, precision: false };
   } catch (err) {

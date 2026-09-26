@@ -20,66 +20,91 @@ app.innerHTML = `
 <div class="app-shell">
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="ambient ambient-c"></div><div class="ambient ambient-d"></div>
   <header class="nav glass-panel">
-    <div class="brand"><div class="logo-liquid">C</div><div><strong>Cutout</strong><span>PRO</span><small>local image restoration studio</small></div></div>
-    <div class="nav-actions"><div class="privacy"><i></i> processing stays on-device</div><button id="theme" class="icon-btn liquid-control" aria-label="Toggle theme">◐</button></div>
+    <div class="brand"><div class="logo-liquid"><span>C</span></div><div><strong>Cutout</strong><span>PRO</span><small>image restoration studio</small></div></div>
+    <div class="nav-actions"><div class="privacy"><i></i> local-first processing</div><button id="theme" class="icon-btn liquid-control" aria-label="Toggle theme">◐</button></div>
   </header>
 
   <main>
     <section class="hero">
-      <div class="pill glass-chip">CLEARER PIXELS · CLEANER CUTOUTS</div>
-      <h1>Make the pixels<br><em>feel alive.</em></h1>
-      <p>Clean the background, reconstruct missing detail, and keep the result transparent — without pretending a resize is enhancement.</p>
-      <div class="hero-proof"><span>Neural 2×</span><span>Tile-safe inference</span><span>Local-first</span></div>
+      <div class="glass-chip"><b>AI IMAGE LAB</b><span>background · detail · transparency</span></div>
+      <h1>Turn ordinary pixels into<br><em>cleaner visual matter.</em></h1>
+      <p>Remove the background and reconstruct detail through a calm, visible workflow built around the image itself.</p>
+      <div class="hero-proof"><span><i></i> Neural 2×</span><span><i></i> Tile-safe</span><span><i></i> On-device</span></div>
     </section>
 
     <section id="uploadView" class="upload-view">
       <div id="dropzone" class="dropzone liquid-glass">
         <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-        <div class="upload-orb"><div>↑</div></div>
-        <h2>Drop a photo into the glass</h2><p>JPG, PNG or WEBP · up to 25 MB</p>
-        <button id="choose" class="primary liquid-button">Choose photo</button>
-        <div class="formats"><span>AI 2×</span><span>Transparent PNG</span><span>Memory-safe</span></div>
+        <div class="drop-visual"><div class="drop-orbit orbit-one"></div><div class="drop-orbit orbit-two"></div><div class="upload-orb"><span>↑</span></div></div>
+        <div class="drop-copy"><span class="eyebrow">START A RESTORATION</span><h2>Place an image in the chamber</h2><p>JPG, PNG or WEBP · up to 25 MB</p></div>
+        <button id="choose" class="primary liquid-button">Choose photo <span>↗</span></button>
+        <div class="formats"><span>01 · segment</span><span>02 · reconstruct</span><span>03 · preserve alpha</span></div>
       </div>
       <div class="feature-row">
-        <div class="mini-glass"><b>Neural reconstruction</b><small>Real Swin2SR reconstruction, processed in small tiles instead of one memory-heavy frame.</small></div>
-        <div class="mini-glass"><b>Precision transparency</b><small>The AI mask is composited with GPU/browser canvas operations instead of giant pixel-copy loops.</small></div>
-        <div class="mini-glass"><b>Responsive by design</b><small>Inference is capped, serialized, and yielded between tiles so the browser can keep breathing.</small></div>
+        <div class="mini-glass"><span class="feature-num">01</span><div><b>Subject isolation</b><small>AI foreground segmentation creates the transparency mask.</small></div></div>
+        <div class="mini-glass"><span class="feature-num">02</span><div><b>Neural reconstruction</b><small>Swin2SR rebuilds detail in small memory-safe tiles.</small></div></div>
+        <div class="mini-glass"><span class="feature-num">03</span><div><b>Clean composite</b><small>Enhanced pixels meet the refined alpha mask at the end.</small></div></div>
       </div>
     </section>
 
     <section id="processing" class="processing hidden">
-      <div class="process-card liquid-glass">
-        <div class="process-top"><div><span class="pill glass-chip" id="processBadge">AI WORKSPACE</span><h2 id="processTitle">Preparing the image…</h2><p id="processSub">Checking dimensions before heavy processing.</p></div><div class="timer" id="timer">0.0s</div></div>
-        <div class="stage-list">
-          <div class="stage active" id="stage1"><i>1</i><div><b>Preparing pixels</b><small>Decoding and memory-safe normalization</small></div><span>•••</span></div>
-          <div class="stage" id="stage2"><i>2</i><div><b>Finding the subject</b><small>Lightweight AI foreground segmentation</small></div><span>•••</span></div>
-          <div class="stage" id="stage3"><i>3</i><div><b>Reconstructing detail</b><small>Small-tile neural super-resolution</small></div><span>•••</span></div>
-          <div class="stage" id="stage4"><i>4</i><div><b>Refining the edges</b><small>Alpha resampling and transparent compositing</small></div><span>•••</span></div>
-          <div class="stage" id="stage5"><i>5</i><div><b>Compositing result</b><small>Building the transparent enhanced PNG</small></div><span>•••</span></div>
+      <div class="process-shell">
+        <div class="process-head">
+          <div><span class="eyebrow">LIVE AI WORKSPACE</span><h2 id="processTitle">Preparing the image…</h2><p id="processSub">Checking dimensions before processing.</p></div>
+          <div class="process-meta"><span id="processBadge">STAGE 01</span><strong id="timer">0.0s</strong></div>
         </div>
-        <div class="progressbar"><span id="bar"></span></div>
-        <div class="fun-tip" id="tip">The first AI run downloads and caches the models. Processing is intentionally capped to protect your browser and laptop.</div>
-        <button id="processingNew" class="ghost liquid-control">Choose a different photo</button>
+
+        <div class="chamber">
+          <div class="chamber-grid"></div>
+          <div class="scan-line"></div>
+          <div class="ring ring-a"></div><div class="ring ring-b"></div><div class="ring ring-c"></div>
+          <div class="image-pod glass-panel">
+            <div class="pod-label"><span>INPUT MATTER</span><i></i></div>
+            <div class="pod-image checker"><img id="processingPreview" alt="Image being processed"></div>
+            <div class="pod-footer"><span id="previewState">awaiting analysis</span><span id="previewDimensions">—</span></div>
+          </div>
+          <div class="process-core"><div class="core-glow"></div><div class="core-mark">C</div></div>
+          <div class="signal signal-a"><span>MASK</span><b id="signalMask">pending</b></div>
+          <div class="signal signal-b"><span>DETAIL</span><b id="signalDetail">pending</b></div>
+          <div class="signal signal-c"><span>ALPHA</span><b id="signalAlpha">pending</b></div>
+        </div>
+
+        <div class="stage-dock glass-panel">
+          <div class="dock-progress"><span id="bar"></span></div>
+          <div class="stage-track">
+            <button class="stage active" id="stage1"><i>01</i><span><b>Prepare</b><small>normalize</small></span></button>
+            <div class="track-line"></div>
+            <button class="stage" id="stage2"><i>02</i><span><b>Isolate</b><small>AI mask</small></span></button>
+            <div class="track-line"></div>
+            <button class="stage" id="stage3"><i>03</i><span><b>Rebuild</b><small>neural detail</small></span></button>
+            <div class="track-line"></div>
+            <button class="stage" id="stage4"><i>04</i><span><b>Refine</b><small>edge alpha</small></span></button>
+            <div class="track-line"></div>
+            <button class="stage" id="stage5"><i>05</i><span><b>Compose</b><small>final PNG</small></span></button>
+          </div>
+          <div class="stage-caption"><span id="tip">The first AI run downloads and caches the models.</span><span class="safe-pill"><i></i> memory-safe mode</span></div>
+        </div>
+        <button id="processingNew" class="ghost liquid-control">← Choose a different photo</button>
       </div>
     </section>
 
     <section id="editor" class="editor hidden">
-      <div class="editor-head"><div><span class="pill glass-chip">RESTORED</span><h2>Your enhanced cutout</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
+      <div class="editor-head"><div><span class="glass-chip"><b>RESTORED</b><span>result ready</span></span><h2>One image. Three ways to inspect it.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
       <div class="canvas-card liquid-glass">
         <div class="canvas-head"><div class="tabs"><button class="tab active" data-mode="result">Enhanced</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Compare</button></div><div class="zoom"><button id="zoomOut">−</button><span id="zoomText">100%</span><button id="zoomIn">＋</button></div></div>
         <div id="preview" class="preview checker"><div id="splitPane"><img id="previewImg" alt="AI enhanced result"></div><img id="originalImg" class="original-img" alt="Original image"></div>
       </div>
-      <div class="quality-panel liquid-glass"><div><span class="eyebrow">PROCESSING REPORT</span><strong id="qualityTitle">Swin2SR neural reconstruction · 2×</strong><small id="qualityDetail">AI reconstruction, not simple browser interpolation.</small></div><div class="quality-badge"><span>✓</span> genuinely enhanced</div></div>
+      <div class="result-ribbon liquid-glass"><div class="ribbon-icon">✦</div><div><span class="eyebrow">RESTORATION REPORT</span><strong id="qualityTitle">Swin2SR neural reconstruction · 2×</strong><small id="qualityDetail">Neural reconstruction with transparent alpha compositing.</small></div><div class="quality-badge"><span>✓</span> neural result</div></div>
       <div class="tools">
-        <div class="tool-group liquid-glass"><label>Preview background</label><div class="choices"><button class="choice selected" data-bg="checker">Transparent</button><button class="choice" data-bg="#ffffff">White</button><button class="choice" data-bg="#111827">Dark</button><button class="choice" data-bg="#dbeafe">Blue</button></div></div>
-        <div class="tool-group liquid-glass"><label>AI export resolution</label><div class="select-row"><select id="scale"><option value="1">1× current enhanced</option><option value="2" selected>2× current AI result</option><option value="4">4× AI reconstruction</option></select><button id="download" class="primary liquid-button">Download PNG ↓</button></div></div>
+        <div class="tool-group liquid-glass"><label>PREVIEW SURFACE</label><div class="choices"><button class="choice selected" data-bg="checker">Transparent</button><button class="choice" data-bg="#ffffff">White</button><button class="choice" data-bg="#111827">Dark</button><button class="choice" data-bg="#dbeafe">Blue</button></div></div>
+        <div class="tool-group liquid-glass"><label>EXPORT</label><div class="select-row"><select id="scale"><option value="1">1× current enhanced</option><option value="2" selected>2× current AI result</option><option value="4">4× AI reconstruction</option></select><button id="download" class="primary liquid-button">Download PNG <span>↓</span></button></div></div>
       </div>
-      <div class="extras"><div class="extra liquid-glass"><b>Source</b><span id="sourceInfo"></span></div><div class="extra liquid-glass"><b>Pipeline</b><span>AI mask → tiled Swin2SR → alpha compositing → transparent PNG</span></div><div class="extra liquid-glass"><b>Runtime</b><span id="runtimeInfo"></span></div></div>
-      <p class="disclaimer">Super-resolution reconstructs plausible fine detail; it cannot recover missing information with certainty. ClearCut uses neural reconstruction rather than ordinary canvas enlargement.</p>
+      <div class="extras"><div class="extra liquid-glass"><b>Source</b><span id="sourceInfo"></span></div><div class="extra liquid-glass"><b>Pipeline</b><span>AI mask → tiled Swin2SR → alpha compositing</span></div><div class="extra liquid-glass"><b>Runtime</b><span id="runtimeInfo"></span></div></div>
+      <p class="disclaimer">Super-resolution reconstructs plausible fine detail; it cannot recover missing information with certainty. Cutout Pro uses neural reconstruction rather than ordinary browser enlargement.</p>
     </section>
   </main>
-  <footer>Cutout Pro · neural image restoration · liquid glass interface</footer>
-</div>`;
+  <footer>Cutout Pro · image restoration studio · built around the pixels</footer>
+</div>`
 
 const $ = id => document.getElementById(id);
 let file, processingBlob, originalUrl, resultUrl, resultBlob, alphaBlob;
@@ -115,8 +140,17 @@ async function getUpscaler() {
 function show(id) { $(id).classList.remove("hidden"); }
 function hide(id) { $(id).classList.add("hidden"); }
 function setStage(n) {
-  for (let i = 1; i <= 5; i++) { $("stage" + i).classList.toggle("active", i === n); $("stage" + i).classList.toggle("done", i < n); }
-  $("bar").style.width = `${Math.min(100, ((n - 1) / 4) * 100 + 7)}%`;
+  for (let i = 1; i <= 5; i++) {
+    const el = $("stage" + i);
+    el.classList.toggle("active", i === n);
+    el.classList.toggle("done", i < n);
+  }
+  $("processBadge").textContent = `STAGE ${String(n).padStart(2,"0")}`;
+  $("bar").style.width = `${Math.min(100, ((n - 1) / 4) * 100 + 6)}%`;
+  $("signalMask").textContent = n >= 2 ? (n === 2 ? "analyzing" : "ready") : "pending";
+  $("signalDetail").textContent = n >= 3 ? (n === 3 ? "rebuilding" : "ready") : "pending";
+  $("signalAlpha").textContent = n >= 4 ? (n === 4 ? "refining" : "locked") : "pending";
+  $("previewState").textContent = n === 1 ? "preparing" : n === 2 ? "isolating subject" : n === 3 ? "reconstructing detail" : n === 4 ? "refining edges" : "compositing";
 }
 function revoke(url) { if (url) URL.revokeObjectURL(url); }
 
@@ -225,13 +259,14 @@ async function start(f) {
   if (f.size > MAX_SOURCE_MB * 1024 * 1024) { showError("That file is larger than 25 MB. Choose a smaller image to keep browser memory stable."); return; }
   busy = true; const token = ++jobToken; file = f; elapsed = 0; zoom = 1;
   revoke(originalUrl); revoke(resultUrl); originalUrl = URL.createObjectURL(f); $("originalImg").src = originalUrl;
-  hide("uploadView"); hide("editor"); show("processing"); setStage(1); $("bar").style.width = "7%";
+  hide("uploadView"); hide("editor"); show("processing"); setStage(1); $("bar").style.width = "6%"; $("processingPreview").src = originalUrl; $("previewDimensions").textContent = "loading…";
   $("processBadge").textContent = "AI WORKSPACE"; $("processTitle").textContent = "Preparing the image…"; $("processSub").textContent = "Checking dimensions before heavy processing.";
   $("processingNew").disabled = false;
   timerInt = setInterval(() => { elapsed += .1; $("timer").textContent = elapsed.toFixed(1) + "s"; }, 100);
   try {
     await nextFrame();
     const prepared = await normalizeForProcessing(f); processingBlob = prepared.blob;
+    $("previewDimensions").textContent = `${prepared.width} × ${prepared.height}`;
     $("processSub").textContent = `${prepared.width} × ${prepared.height}px working image · ${UPSCALE_TILE}px AI tiles.`;
     await yieldToBrowser();
 
@@ -243,11 +278,19 @@ async function start(f) {
       output: { format: "image/png", type: "mask" }
     });
     if (token !== jobToken) return;
+    $("previewState").textContent = "subject isolated · mask ready";
+    const maskUrl = URL.createObjectURL(alphaBlob);
+    $("processingPreview").src = maskUrl;
+    $("processingPreview").classList.add("mask-preview");
+    setTimeout(() => URL.revokeObjectURL(maskUrl), 1200);
     await yieldToBrowser();
 
     setStage(3); $("processTitle").textContent = "Reconstructing detail…"; $("processSub").textContent = `Preparing ${UPSCALE_TILE}px neural tiles. No full-frame inference.`; await nextFrame();
     const enhanced = await upscaleTiled(processingBlob, token);
     if (token !== jobToken) return;
+    $("processingPreview").classList.remove("mask-preview");
+    $("processingPreview").src = URL.createObjectURL(enhanced.blob);
+    $("previewDimensions").textContent = `${enhanced.width} × ${enhanced.height}`;
     await yieldToBrowser();
 
     setStage(4); $("processTitle").textContent = "Refining the edges…"; $("processSub").textContent = "Scaling the segmentation mask with browser compositing."; await nextFrame();

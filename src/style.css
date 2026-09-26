@@ -286,3 +286,168 @@ body.editor-active #download{height:38px;padding:8px 14px;font-size:8px}
  body.editor-active .quick-btn:nth-child(4){grid-column:3}
  body.editor-active #download{grid-column:4;grid-row:1}
 }
+
+/* =========================================================
+   CUTOUT PRO — SIMPLE STUDIO REDESIGN
+   Image-first workspace inspired by modern one-task editors.
+   Keeps existing controls/functionality; changes presentation only.
+   ========================================================= */
+body.editor-active .editor{
+  grid-template-rows:58px 34px minmax(0,1fr) 64px;
+  gap:8px;
+  padding:10px 16px 12px;
+}
+body.editor-active .studio-toolbar{
+  width:min(1240px,100%);height:58px;min-height:58px;
+  padding:5px 7px;border-radius:16px;gap:10px;
+  background:rgba(255,255,255,.72);
+  border:1px solid rgba(65,85,95,.10);
+  box-shadow:0 10px 35px rgba(35,55,65,.10), inset 0 1px 0 rgba(255,255,255,.85);
+}
+body.editor-active .studio-tool-group{gap:4px;overflow:visible}
+body.editor-active .studio-tool{
+  min-width:112px;height:46px;padding:6px 11px;
+  grid-template-columns:24px 1fr;grid-template-rows:17px 13px;
+  column-gap:7px;border-radius:12px;
+  border:1px solid transparent;background:transparent;
+  color:#33434a;
+}
+body.editor-active .studio-tool:hover{background:rgba(235,241,242,.82);border-color:rgba(70,90,100,.08)}
+body.editor-active .studio-tool.active{
+  background:#edf4f3;border-color:rgba(59,83,88,.13);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 4px 14px rgba(45,65,72,.08);
+}
+body.editor-active .studio-tool span{font-size:17px;color:#48656b}
+body.editor-active .studio-tool b{font-size:10px;font-weight:800;line-height:1.05;color:#26363c}
+body.editor-active .studio-tool small{font-size:7.5px;line-height:1.05;color:#65767c;opacity:1}
+body.editor-active .studio-actions{gap:5px}
+body.editor-active .studio-action.labeled,
+body.editor-active .studio-icon,
+body.editor-active .toolbar-download{
+  height:42px;border-radius:11px;
+}
+body.editor-active .studio-action.labeled{padding:7px 11px;font-size:8px;background:rgba(248,250,250,.72)}
+body.editor-active .studio-action.labeled b{font-size:8px}
+body.editor-active .studio-icon{width:38px;background:rgba(248,250,250,.72)}
+body.editor-active .toolbar-download{font-size:9px!important;font-weight:800;padding:7px 15px!important}
+
+/* compact title row: readable, but never competes with the photo */
+body.editor-active .editor-head{
+  width:min(1240px,100%);height:34px;min-height:34px;margin:0 auto;
+}
+body.editor-active .editor-head h2{font-size:15px;font-weight:800;color:#27383e}
+body.editor-active .editor-head p{font-size:8.5px;color:#68777c;opacity:1}
+body.editor-active .editor-head .ghost{font-size:8px;border-radius:9px;padding:7px 11px}
+
+/* Large calm image stage */
+body.editor-active .canvas-card{
+  width:min(1240px,100%);height:100%;min-height:0;
+  margin:0 auto;padding:7px;border-radius:20px;
+  background:rgba(255,255,255,.58);
+  border:1px solid rgba(70,90,100,.10);
+  box-shadow:0 12px 42px rgba(35,55,65,.09),inset 0 1px 0 rgba(255,255,255,.9);
+}
+body.editor-active .canvas-head{height:38px;padding:0 6px}
+body.editor-active .canvas-title b{font-size:11px;color:#293a40}
+body.editor-active .canvas-title span{font-size:8px;color:#738187;opacity:1}
+body.editor-active .tabs{background:rgba(115,130,138,.08);border:1px solid rgba(70,90,100,.08)}
+body.editor-active .tab{font-size:8px;font-weight:700;color:#65747a}
+body.editor-active .tab.active{background:#fff;color:#27383e;box-shadow:0 3px 10px rgba(40,60,68,.10)}
+body.editor-active .zoom{border:1px solid rgba(70,90,100,.08);background:rgba(255,255,255,.55)}
+body.editor-active .zoom span{font-size:8px;color:#516168}
+body.editor-active .preview{
+  background-color:#f6f8f8;
+  box-shadow:inset 0 0 0 1px rgba(60,80,90,.06);
+}
+body.editor-active .preview img{max-width:91%;max-height:91%;filter:drop-shadow(0 14px 22px rgba(35,50,58,.12))}
+body.editor-active .preview.checker{background-image:linear-gradient(45deg,#e9eeee 25%,transparent 25%),linear-gradient(-45deg,#e9eeee 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e9eeee 75%),linear-gradient(-45deg,transparent 75%,#e9eeee 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0;background-color:#f8faf9}
+
+/* Tool panels: one consistent right-side inspector instead of giant overlays */
+body.editor-active .tool-drawer,
+body.editor-active .advanced-section{
+  position:fixed;left:auto;right:18px;top:78px;
+  transform:none;width:360px;max-width:calc(100vw - 36px);
+  max-height:calc(100dvh - 98px);overflow:auto;
+  border-radius:18px;z-index:130;
+  background:rgba(249,252,252,.91);
+  border:1px solid rgba(60,80,90,.12);
+  box-shadow:0 24px 70px rgba(25,45,55,.20),inset 0 1px 0 rgba(255,255,255,.9);
+  backdrop-filter:blur(28px) saturate(135%);
+}
+body.editor-active .tool-drawer{padding:0}
+body.editor-active .drawer-panel{padding:18px}
+body.editor-active .advanced-section[open]{display:block}
+body.editor-active .advanced-section summary{
+  padding:15px 17px;min-height:58px;
+  background:rgba(255,255,255,.72);border-bottom:1px solid rgba(60,80,90,.08);
+}
+body.editor-active .advanced-section summary b{font-size:11px;color:#27383e}
+body.editor-active .advanced-section summary small{font-size:8px;color:#6c7b80;opacity:1}
+body.editor-active .advanced-section .details-body{padding:14px}
+body.editor-active .drawer-panel>div:first-child strong{font-size:13px;color:#293a40}
+body.editor-active .drawer-panel>div:first-child small{font-size:8px;color:#738187}
+body.editor-active .drawer-controls label,
+body.editor-active .mini-range{font-size:9px;color:#43545a}
+body.editor-active .design-choice,
+body.editor-active .background-option{min-height:48px}
+
+/* Mask editor gets a clear two-column, task-oriented layout */
+body.editor-active #advancedMask .mask-layout{grid-template-columns:1fr}
+body.editor-active #advancedMask .mask-canvas-wrap{min-height:300px;border-radius:13px}
+body.editor-active #advancedMask .mask-controls{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+body.editor-active #advancedMask .mask-tools{display:contents}
+body.editor-active #advancedMask .mask-tool{min-height:55px;border-radius:11px}
+
+/* Bottom bar: actions users actually need, in a predictable order */
+body.editor-active .quick-actions{
+  width:min(1240px,100%);height:64px;min-height:64px;
+  margin:0 auto;padding:7px 9px;border-radius:15px;
+  background:rgba(255,255,255,.78);
+  border:1px solid rgba(65,85,95,.10);
+  box-shadow:0 12px 35px rgba(35,55,65,.12);
+}
+body.editor-active .quick-actions>div:first-child{min-width:205px}
+body.editor-active .quick-actions>div:first-child h3{font-size:10px;color:#293a40}
+body.editor-active .quick-actions>div:first-child p{font-size:7.5px;color:#718086;opacity:1}
+body.editor-active .quick-buttons{gap:6px}
+body.editor-active .quick-btn{height:38px;padding:7px 12px;font-size:8px;border-radius:10px}
+body.editor-active #download{height:40px;padding:8px 17px;font-size:9px;font-weight:800;border-radius:11px}
+
+/* Make every important label readable in the editor */
+body.editor-active .eyebrow{font-size:7px;letter-spacing:.11em;color:#63757b;opacity:1}
+body.editor-active button{font-family:inherit}
+
+@media(max-width:900px){
+  body.editor-active .editor{grid-template-rows:58px 28px minmax(0,1fr) 58px;padding:7px;gap:6px}
+  body.editor-active .studio-tool{min-width:0;flex:1;padding:5px 6px;grid-template-columns:19px 1fr;column-gap:5px}
+  body.editor-active .studio-tool b{font-size:8px}.studio-tool small{font-size:6.5px!important}
+  body.editor-active .studio-action.labeled{display:flex;padding:6px 8px}.studio-action.labeled b{display:none}
+  body.editor-active .studio-icon{width:32px}
+  body.editor-active .toolbar-download{padding:7px 10px!important}
+  body.editor-active .tool-drawer,body.editor-active .advanced-section{right:10px;top:70px;width:340px;max-height:calc(100dvh - 82px)}
+  body.editor-active .quick-actions{height:58px;min-height:58px}
+  body.editor-active .quick-actions>div:first-child{display:none}
+  body.editor-active .quick-buttons{display:grid;grid-template-columns:repeat(3,1fr) 1.25fr;width:100%}
+  body.editor-active .quick-btn,#download{width:100%;min-width:0}
+}
+@media(max-width:560px){
+  body.editor-active .editor{grid-template-rows:54px 26px minmax(0,1fr) 54px;padding:5px}
+  body.editor-active .studio-toolbar{height:54px;min-height:54px;padding:4px}
+  body.editor-active .studio-tool{height:44px;grid-template-columns:1fr;grid-template-rows:18px 12px;text-align:center;padding:4px}
+  body.editor-active .studio-tool span{grid-row:auto;font-size:12px}
+  body.editor-active .studio-tool b{font-size:6.8px!important}.studio-tool small{display:none!important}
+  body.editor-active .studio-actions{gap:2px}.studio-action.labeled{display:none!important}
+  body.editor-active .studio-icon{width:28px!important;height:36px!important}
+  body.editor-active .toolbar-download{height:36px!important;font-size:7px!important;padding:5px 7px!important}
+  body.editor-active .editor-head h2{font-size:12px}.editor-head p{display:none!important}
+  body.editor-active .canvas-card{grid-template-rows:34px minmax(0,1fr);padding:5px}
+  body.editor-active .canvas-head{height:34px}
+  body.editor-active .canvas-title{display:none}
+  body.editor-active .tabs{margin:auto}
+  body.editor-active .tab{font-size:7px;padding:5px 8px}
+  body.editor-active .zoom{display:none}
+  body.editor-active .tool-drawer,body.editor-active .advanced-section{left:5px;right:5px;top:64px;width:auto;max-width:none;max-height:calc(100dvh - 72px)}
+  body.editor-active .quick-actions{height:54px;min-height:54px;padding:5px}
+  body.editor-active .quick-buttons{grid-template-columns:repeat(3,1fr) 1.35fr;gap:4px}
+  body.editor-active .quick-btn,#download{height:36px;padding:5px 3px;font-size:7px}
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Cutout Pro",
+  "short_name": "Cutout Pro",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#edf4f2",
+  "theme_color": "#edf4f2",
+  "description": "Local-first AI background removal and image editing studio",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

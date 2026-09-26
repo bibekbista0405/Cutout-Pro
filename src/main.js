@@ -1,10 +1,11 @@
 import { removeBackground } from "@imgly/background-removal";
+import JSZip from "jszip";
 import "./style.css";
 
 const MAX_SOURCE_MB = 25;
 const MAX_SOURCE_PIXELS = 30_000_000;
 // Deliberately conservative: browser ML should never be allowed to consume the machine.
-const PROCESS_MAX_EDGE = 768;
+const PROCESS_MAX_EDGE = 1024;
 const PRECISION_MAX_EDGE = 1280;
 const PRECISION_CROP_MARGIN = 0.16;
 const UPSCALE_TILE = 256;
@@ -35,9 +36,10 @@ app.innerHTML = `
     <section id="uploadView" class="upload-view">
       <div id="dropzone" class="dropzone liquid-glass">
         <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        <input id="batchInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
         <div class="drop-visual"><div class="drop-orbit orbit-one"></div><div class="drop-orbit orbit-two"></div><div class="upload-orb"><span>↑</span></div></div>
         <div class="drop-copy"><span class="eyebrow">START A RESTORATION</span><h2>Place an image in the chamber</h2><p>JPG, PNG or WEBP · up to 25 MB</p><div class="tool-picker" role="tablist" aria-label="Choose processing tool"><button class="tool-choice active" data-tool="remove" type="button"><span>✦</span><b>Remove background</b><small>clean transparent cutout</small></button><button class="tool-choice" data-tool="enhance" type="button"><span>↗</span><b>Enhance image</b><small>reconstruct fine detail</small></button><button class="tool-choice" data-tool="both" type="button"><span>◈</span><b>Remove + enhance</b><small>full restoration</small></button></div></div>
-        <button id="choose" class="primary liquid-button">Choose photo <span>↗</span></button>
+        <div class="upload-actions"><button id="choose" class="primary liquid-button">Choose photo <span>↗</span></button><button id="batchChoose" class="ghost liquid-control" type="button">Batch 5–20 photos</button></div>
         <div class="formats"><span>01 · segment</span><span>02 · reconstruct</span><span>03 · preserve alpha</span></div>
       </div>
       <div class="feature-row">
@@ -91,17 +93,17 @@ app.innerHTML = `
     <section id="editor" class="editor hidden">
       <div class="studio-toolbar liquid-glass" role="toolbar" aria-label="Editing tools">
         <div class="studio-tool-group">
-          <button class="studio-tool active" data-editor-tool="cutout" type="button"><span>✦</span><b>Cutout</b><small>fix edges</small></button>
-          <button class="studio-tool" data-editor-tool="background" type="button"><span>◒</span><b>Background</b><small>change scene</small></button>
-          <button class="studio-tool" data-editor-tool="effects" type="button"><span>●</span><b>Effects</b><small>shadow & blur</small></button>
-          <button class="studio-tool" data-editor-tool="adjust" type="button"><span>◧</span><b>Adjust</b><small>light & color</small></button>
-          <button class="studio-tool" data-editor-tool="design" type="button"><span>◫</span><b>Design</b><small>presentation</small></button>
+          <button class="studio-tool active" data-editor-tool="cutout" type="button"><span>✦</span><b>Cutout</b></button>
+          <button class="studio-tool" data-editor-tool="background" type="button"><span>◒</span><b>Background</b></button>
+          <button class="studio-tool" data-editor-tool="effects" type="button"><span>●</span><b>Effects</b></button>
+          <button class="studio-tool" data-editor-tool="adjust" type="button"><span>◧</span><b>Adjust</b></button>
+          <button class="studio-tool" data-editor-tool="design" type="button"><span>◫</span><b>Design</b></button>
         </div>
         <div class="studio-actions">
-          <button id="compareTool" class="studio-action labeled" type="button" aria-label="Compare original and result"><span>◫</span><b>Compare</b></button>
-          <button id="undoTool" class="studio-icon" type="button" aria-label="Undo mask edit">↶</button>
-          <button id="redoTool" class="studio-icon" type="button" aria-label="Redo mask edit">↷</button>
-          <button id="toolbarDownload" class="toolbar-download primary" type="button">Export <span>↓</span></button>
+          <button id="compareTool" class="studio-icon" type="button" aria-label="Compare original and result">Compare</button>
+          <button id="undoTool" class="studio-icon" type="button" aria-label="Undo last edit">Undo</button>
+          <button id="redoTool" class="studio-icon" type="button" aria-label="Redo last edit">Redo</button>
+          <button id="toolbarDownload" class="toolbar-download primary" type="button">Export <span>⌄</span></button>
         </div>
       </div>
       <div id="toolDrawer" class="tool-drawer liquid-glass hidden" aria-live="polite">
@@ -123,7 +125,7 @@ app.innerHTML = `
           </div>
         </div>
         <div id="designPanel" class="drawer-panel hidden">
-          <div><span class="eyebrow">DESIGN</span><strong>Choose the presentation</strong><small>These options only change how your final image is shown/exported.</small></div>
+          <div><span class="eyebrow">DESIGN</span><strong>Choose the presentation</strong><small>Pick a background without opening a large settings panel.</small></div>
           <div class="design-pills">
             <button class="design-choice active" data-design-bg="checker" type="button">Transparent</button>
             <button class="design-choice" data-design-bg="white" type="button">White</button>
@@ -131,18 +133,17 @@ app.innerHTML = `
             <button class="design-choice" data-design-bg="gradient" type="button">Gradient</button>
             <button class="design-choice" data-design-bg="blur" type="button">Original blur</button>
           </div>
-          <label class="export-toggle-card"><span><b>Watermark</b><small>Add a small “Cutout Pro” mark to exported images.</small></span><input id="watermarkToggle" type="checkbox"><i></i><em>OFF</em></label>
         </div>
       </div>
-      <div class="editor-head"><div><span class="glass-chip"><b>RESTORED</b><span>result ready</span></span><h2>Your cutout is ready.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
+      <div class="editor-head"><div><span class="glass-chip"><b id="resultModeLabel">CUTOUT READY</b><span>result ready</span></span><h2>Your cutout is ready.</h2><p id="stats"></p></div><button id="new" class="ghost liquid-control">＋ New photo</button></div>
       <div class="canvas-card liquid-glass">
-        <div class="canvas-head"><div class="canvas-title"><b>Preview</b><span id="viewHint">Your final cutout</span></div><div class="tabs"><button class="tab active" data-mode="result">Final</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Side by side</button></div><div class="zoom"><button id="zoomOut" aria-label="Zoom out">−</button><span id="zoomText">100%</span><button id="zoomIn" aria-label="Zoom in">＋</button></div></div>
+        <div class="canvas-head"><div class="tabs"><button class="tab active" data-mode="result">Result</button><button class="tab" data-mode="original">Original</button><button class="tab" data-mode="split">Compare</button></div><div class="zoom"><button id="zoomOut">−</button><span id="zoomText">100%</span><button id="zoomIn">＋</button></div></div>
         <div id="preview" class="preview checker"><div id="splitPane"><img id="previewImg" alt="AI enhanced result"></div><img id="originalImg" class="original-img" alt="Original image"></div>
       </div>
       <div class="result-ribbon liquid-glass"><div class="ribbon-icon">✦</div><div><span class="eyebrow">RESTORATION REPORT</span><strong id="qualityTitle">Swin2SR neural reconstruction · 2×</strong><small id="qualityDetail">Neural reconstruction with transparent alpha compositing.</small></div><div id="qualityBadge" class="quality-badge"><span>✓</span> neural result</div></div>
       <div class="quick-actions liquid-glass">
         <div><span class="eyebrow">QUICK FINISH</span><h3>Ready to use</h3><p>Most images are finished here. Use advanced tools only when you need them.</p></div>
-        <div class="quick-buttons"><button class="quick-btn active" data-quick-bg="checker">Transparent</button><button class="quick-btn" data-quick-bg="white">White</button><button class="quick-btn" data-quick-bg="dark">Dark</button><button class="quick-btn quick-secondary" id="watermarkQuick" type="button">Watermark <span>OFF</span></button><button id="download" class="primary liquid-button">Preview & download <span>↗</span></button></div>
+        <div class="quick-buttons"><button class="quick-btn active" data-quick-bg="checker">Transparent</button><button class="quick-btn" data-quick-bg="white">White</button><button class="quick-btn" data-quick-bg="dark">Dark</button><button id="download" class="primary liquid-button">Export <span>↗</span></button><button id="copyResult" class="ghost liquid-control" type="button">Copy</button></div>
       </div>
       <details class="advanced-section liquid-glass" id="advancedBackground">
         <summary><span><b>Background Studio</b><small>Colors, custom image, blur and shadow</small></span><i>＋</i></summary>
@@ -166,6 +167,10 @@ app.innerHTML = `
           </div>
         </div>
       </details>
+      <section class="preset-bar liquid-glass" aria-label="Saved presets">
+        <div><span class="eyebrow">SAVED RECIPES</span><strong>Repeat a look in one click</strong><small>Save your background, shadow and image adjustments.</small></div>
+        <div class="preset-controls"><select id="presetSelect" aria-label="Saved preset"><option value="">Choose preset…</option></select><button id="savePreset" class="ghost liquid-control" type="button">Save current</button><button id="deletePreset" class="ghost liquid-control" type="button">Delete</button></div>
+      </section>
       <details class="advanced-section liquid-glass" id="advancedMask">
         <summary><span><b>Manual Cutout Editor</b><small>Fix small missed background areas or restore details</small></span><i>＋</i></summary>
         <div class="details-body">
@@ -177,16 +182,22 @@ app.innerHTML = `
       <p class="disclaimer">Super-resolution reconstructs plausible fine detail; it cannot recover missing information with certainty. Cutout Pro uses neural reconstruction rather than ordinary browser enlargement.</p>
     </section>
   </main>
-  <div id="exportPreview" class="export-preview hidden" role="dialog" aria-modal="true" aria-label="Export preview"><div class="export-backdrop"></div><div class="export-dialog liquid-glass"><div class="export-head"><div><span class="eyebrow">EXPORT PREVIEW</span><h2>See it before it leaves.</h2><p>Inspect transparency, scale and output quality before downloading.</p></div><button id="exportClose" class="icon-btn liquid-control" aria-label="Close export preview">×</button></div><div class="export-stage checker"><img id="exportImage" alt="Final export preview"></div><div class="export-meta"><div><b id="exportDimensions">—</b><span>output size</span></div><div><b id="exportFormat">PNG</b><span>format</span></div><div><b id="exportTransparency">Alpha</b><span>transparency</span></div></div><div class="export-options"><label class="export-toggle-card compact"><span><b>Watermark</b><small>Off by default</small></span><input id="exportWatermarkToggle" type="checkbox"><i></i><em>OFF</em></label></div><div class="export-actions"><button id="exportCancel" class="ghost liquid-control">Keep editing</button><button id="exportConfirm" class="primary liquid-button">Download <span>↓</span></button></div></div></div>
+  <div id="exportPreview" class="export-preview hidden" role="dialog" aria-modal="true" aria-label="Export preview"><div class="export-backdrop"></div><div class="export-dialog liquid-glass"><div class="export-head"><div><span class="eyebrow">EXPORT PREVIEW</span><h2>See it before it leaves.</h2><p>Inspect transparency, scale and output quality before downloading.</p></div><button id="exportClose" class="icon-btn liquid-control" aria-label="Close export preview">×</button></div><div class="export-stage checker"><img id="exportImage" alt="Final export preview"></div><div class="export-options">
+  <label>Size<select id="exportSize"><option value="original">Original size</option><option value="400x400">LinkedIn · 400×400</option><option value="1080x1080">Instagram · 1080×1080</option><option value="1600x1600">eBay · 1600×1600</option></select></label>
+  <label>Format<select id="exportFormatSelect"><option value="png">PNG · transparent</option><option value="webp">WebP · smaller</option><option value="jpeg">JPEG · solid background</option></select></label>
+  <label class="export-toggle"><span>Watermark</span><input id="watermarkToggle" type="checkbox"><i></i></label>
+</div>
+<div class="export-meta"><div><b id="exportDimensions">—</b><span>output size</span></div><div><b id="exportFormat">PNG</b><span>format</span></div><div><b id="exportTransparency">Alpha</b><span>transparency</span></div></div><div class="export-actions"><button id="exportCancel" class="ghost liquid-control">Keep editing</button><button id="exportConfirm" class="primary liquid-button">Download <span>↓</span></button></div></div></div>
   <footer>Cutout Pro · image restoration studio · built around the pixels</footer>
 </div>`
 
 const $ = id => document.getElementById(id);
 let file, processingBlob, originalUrl, resultUrl, resultBlob, alphaBlob;
-let elapsed = 0, timerInt, zoom = 1, busy = false, jobToken = 0, activeTool = "remove", exportFormat = "png";
+let elapsed = 0, timerInt, zoom = 1, busy = false, jobToken = 0, activeTool = "remove", exportFormat = "png", exportSize = "original", watermarkEnabled = false;
 let backgroundMode = "checker", customBackgroundBlob = null, customBackgroundUrl = null, renderedExportBlob = null, renderedPreviewUrl = null;
-let watermarkEnabled = false;
 let shadowEnabled = false, shadowStrength = 18, backgroundBlur = 14;
+let batchQueue = [], batchOutputs = [], batchMode = false;
+let stateHistory = [], stateRedo = [];
 let adjustBrightness = 100, adjustContrast = 100, adjustSaturation = 100;
 let maskHistory = [], maskRedo = [];
 let maskCanvas, maskCtx, maskLayerCanvas, maskLayerCtx, enhancedSourceBlob, maskOriginalBlob, maskPainting = false, maskTool = "remove";
@@ -430,7 +441,18 @@ function saveMaskHistory(){
   maskHistory.push(snap); if(maskHistory.length>6) maskHistory.shift(); maskRedo=[]; updateHistoryButtons();
 }
 function restoreMaskSnapshot(snap){ if(!snap||!maskLayerCtx) return; maskLayerCtx.putImageData(snap,0,0); renderMaskPreview(); updateHistoryButtons(); }
-function updateHistoryButtons(){ const u=$("undoTool"), r=$("redoTool"); if(u){u.disabled=!maskHistory.length;u.classList.toggle("disabled",!maskHistory.length);} if(r){r.disabled=!maskRedo.length;r.classList.toggle("disabled",!maskRedo.length);} }
+function snapshotState(){ return {backgroundMode,shadowEnabled,shadowStrength,backgroundBlur,adjustBrightness,adjustContrast,adjustSaturation}; }
+function restoreState(st){ if(!st)return; backgroundMode=st.backgroundMode;shadowEnabled=st.shadowEnabled;shadowStrength=st.shadowStrength;backgroundBlur=st.backgroundBlur;adjustBrightness=st.adjustBrightness;adjustContrast=st.adjustContrast;adjustSaturation=st.adjustSaturation; [$("shadowToggle"),$("effectShadowToggle")].forEach(x=>x&&(x.checked=shadowEnabled)); $("shadowStrength").value=shadowStrength;$("effectShadowStrength").value=shadowStrength;$("blurStrength").value=backgroundBlur;$("effectBlurStrength").value=backgroundBlur; $("brightnessControl").value=adjustBrightness;$("contrastControl").value=adjustContrast;$("saturationControl").value=adjustSaturation; updateAdjustLabels(); renderBackgroundComposite(); }
+function pushState(){ const cur=snapshotState(); if(JSON.stringify(stateHistory.at(-1))===JSON.stringify(cur)) return; stateHistory.push(cur); if(stateHistory.length>30)stateHistory.shift(); stateRedo=[]; updateHistoryButtons(); }
+function undoState(){ if(stateHistory.length<2)return; stateRedo.push(stateHistory.pop()); restoreState(stateHistory.at(-1)); updateHistoryButtons(); }
+function redoState(){ if(!stateRedo.length)return; const st=stateRedo.pop(); stateHistory.push(st); restoreState(st); updateHistoryButtons(); }
+function updateAdjustLabels(){ [$("brightnessValue"),$("contrastValue"),$("saturationValue")].forEach((o,i)=>o.textContent=[adjustBrightness,adjustContrast,adjustSaturation][i]+"%"); }
+function updatePresetList(){ const sel=$("presetSelect"); if(!sel)return; const presets=JSON.parse(localStorage.getItem("cutoutPro.presets")||"{}"); sel.innerHTML='<option value="">Choose preset…</option>'+Object.keys(presets).map(n=>`<option value="${n.replaceAll('"','&quot;')}">${n}</option>`).join(""); }
+function savePreset(){ const name=prompt("Preset name"); if(!name?.trim())return; const presets=JSON.parse(localStorage.getItem("cutoutPro.presets")||"{}"); presets[name.trim()]=snapshotState(); localStorage.setItem("cutoutPro.presets",JSON.stringify(presets)); updatePresetList(); $("presetSelect").value=name.trim(); }
+function applyPreset(name){ const presets=JSON.parse(localStorage.getItem("cutoutPro.presets")||"{}"); if(!presets[name])return; pushState(); restoreState(presets[name]); }
+function deletePreset(){ const name=$("presetSelect").value;if(!name)return;const presets=JSON.parse(localStorage.getItem("cutoutPro.presets")||"{}");delete presets[name];localStorage.setItem("cutoutPro.presets",JSON.stringify(presets));updatePresetList(); }
+
+function updateHistoryButtons(){ const u=$("undoTool"), r=$("redoTool"); if(u){u.disabled=stateHistory.length<2 && !maskHistory.length;u.classList.toggle("disabled",u.disabled);} if(r){r.disabled=!stateRedo.length && !maskRedo.length;r.classList.toggle("disabled",r.disabled);} }
 function undoMask(){ if(!maskHistory.length)return; const current=maskLayerCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height); maskRedo.push(current); const snap=maskHistory.pop(); restoreMaskSnapshot(snap); }
 function redoMask(){ if(!maskRedo.length)return; const current=maskLayerCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height); maskHistory.push(current); const snap=maskRedo.pop(); restoreMaskSnapshot(snap); }
 
@@ -502,6 +524,37 @@ async function pasteMaskIntoCanvas(cropMask, fullW, fullH, rect){
   const out=await canvasToBlob(full); full.width=1;full.height=1; return out;
 }
 
+async function mergePrecisionMask(primaryMask, focusedMask, rect, fullW, fullH){
+  const primary = await blobToCanvas(primaryMask);
+  const focused = await blobToCanvas(focusedMask);
+  const w=fullW,h=fullH;
+  const out=document.createElement("canvas"); out.width=w; out.height=h;
+  const ox=out.getContext("2d",{willReadFrequently:true});
+  const pd=primary.getContext("2d",{willReadFrequently:true}).getImageData(0,0,w,h).data;
+  const fd=focused.getContext("2d",{willReadFrequently:true}).getImageData(0,0,focused.width,focused.height).data;
+  const dst=ox.createImageData(w,h);
+  const sx=focused.width/Math.max(1,rect.w), sy=focused.height/Math.max(1,rect.h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const i=(y*w+x)*4;
+    let a=pd[i+3];
+    if(x>=rect.x && y>=rect.y && x<rect.x+rect.w && y<rect.y+rect.h){
+      const fx=Math.min(focused.width-1,Math.max(0,Math.floor((x-rect.x)*sx)));
+      const fy=Math.min(focused.height-1,Math.max(0,Math.floor((y-rect.y)*sy)));
+      const fa=fd[(fy*focused.width+fx)*4+3];
+      // Let the focused model improve uncertain pixels, but never erase a
+      // confident primary foreground pixel merely because the crop disagrees.
+      if(a < 48) a=fa;
+      else if(fa > a) a=Math.round(a*0.35 + fa*0.65);
+      else if(a > 210 && fa < 80) a=Math.round(a*0.82 + fa*0.18);
+    }
+    dst.data[i]=dst.data[i+1]=dst.data[i+2]=255;
+    dst.data[i+3]=a;
+  }
+  ox.putImageData(dst,0,0);
+  primary.width=1; primary.height=1; focused.width=1; focused.height=1;
+  const result=await canvasToBlob(out); out.width=1; out.height=1; return result;
+}
+
 async function focusedPrecisionPass(sourceBlob, firstMask, token){
   const stats=await inspectMask(firstMask);
   if(!stats.bbox) return null;
@@ -518,8 +571,11 @@ async function focusedPrecisionPass(sourceBlob, firstMask, token){
   }};
   const mask=await removeBackground(scaled.blob,{...config,model:navigator.gpu?"isnet":"isnet_quint8",device:navigator.gpu?"gpu":"cpu"});
   if(token!==jobToken) throw new DOMException("Cancelled","AbortError");
-  const rect={x:baseRect.x,y:baseRect.y,w:baseRect.w,h:baseRect.h};
-  return await pasteMaskIntoCanvas(mask,stats.width,stats.height,rect);
+  // Convert the high-resolution crop mask back into the original working
+  // coordinate system and merge it with the primary mask instead of replacing
+  // the whole matte. This preserves confident pixels around the subject.
+  const focusedFull=await pasteMaskIntoCanvas(mask,stats.width,stats.height,{x:baseRect.x,y:baseRect.y,w:baseRect.w,h:baseRect.h});
+  return await mergePrecisionMask(firstMask,focusedFull,baseRect,stats.width,stats.height);
 }
 
 async function runBackgroundRemoval(blob, token) {
@@ -618,7 +674,7 @@ async function start(f) {
 
     setStage(activeTool === "remove" ? 4 : 4); $("processTitle").textContent = "Refining the cutout edge…"; $("processSub").textContent = "Cleaning the matte and preserving soft subject boundaries."; await nextFrame();
     const resizedMask = await resizeAlphaBlob(alphaBlob, enhanced.width, enhanced.height);
-    const refinedMask = await refineAlphaMask(resizedMask, activeTool === "remove");
+    const refinedMask = await refineAlphaMask(resizedMask, false);
     await setupMaskEditor(enhanced.blob, refinedMask);
     URL.revokeObjectURL(enhancedUrl);
     await yieldToBrowser();
@@ -631,7 +687,7 @@ async function start(f) {
     $("stats").textContent = `${elapsed.toFixed(1)}s · ${info.width} × ${info.height}px · ${activeTool === "remove" ? "AI cutout" : "AI 2×"}`;
     $("qualityTitle").textContent = activeTool === "remove" ? "Precision AI background removal" : "Swin2SR neural reconstruction · 2×";
     $("qualityDetail").textContent = activeTool === "remove" ? `Foreground matte generated with ${window.__cutoutModelUsed || chooseRemovalModel()}${window.__cutoutPrecisionPass ? " precision pass" : ""} and refined alpha compositing.` : "Neural reconstruction with transparent alpha compositing.";
-    $("qualityBadge").innerHTML = activeTool === "remove" ? "<span>✓</span> cutout ready" : "<span>✓</span> neural result";
+    $("qualityBadge").innerHTML = activeTool === "remove" ? "<span>✓</span> cutout ready" : "<span>✓</span> neural result"; $("resultModeLabel").textContent = activeTool === "remove" ? "CUTOUT READY" : "ENHANCED READY";
     $("sourceInfo").textContent = `${f.name} · ${prepared.original.width} × ${prepared.original.height}px · ${(f.size / 1024 / 1024).toFixed(2)} MB`;
     hide("processing"); show("editor"); setPreviewMode("split"); applyZoom();
   } catch (err) {
@@ -652,17 +708,21 @@ async function refineAlphaMask(blob, aggressive = false){
   for(let y=0;y<h;y++) for(let x=0;x<w;x++){
     const i=(y*w+x)*4, a=aAt(x,y);
     dst.data[i]=dst.data[i+1]=dst.data[i+2]=255;
-    if(a<18){dst.data[i+3]=0;continue;}
-    let localMax=a, localMin=a;
+    // Preserve the model's soft matte. Only remove near-zero speckle/noise;
+    // aggressively shrinking semi-transparent pixels destroys hair and thin
+    // contours, which is exactly what the previous pass was doing.
+    if(a<=8){dst.data[i+3]=0;continue;}
+    let maxA=a, opaqueNeighbors=0;
     for(let oy=-1;oy<=1;oy++) for(let oxi=-1;oxi<=1;oxi++){
+      if(!oxi&&!oy) continue;
       const xx=x+oxi,yy=y+oy; if(xx<0||yy<0||xx>=w||yy>=h) continue;
-      const aa=aAt(xx,yy); localMax=Math.max(localMax,aa); localMin=Math.min(localMin,aa);
+      const aa=aAt(xx,yy); maxA=Math.max(maxA,aa); if(aa>=245) opaqueNeighbors++;
     }
     let clean=a;
-    if(localMax>=245 && a<90) clean=Math.round(a*(aggressive?.16:.28));
-    else if(localMax>=245 && a<170) clean=Math.round(a*(aggressive?.42:.58));
-    else if(localMax-a>45 && a<225) clean=Math.round(a*(aggressive?.72:.82));
-    if(clean<24) clean=0;
+    // Only suppress extremely weak pixels immediately outside a solid region.
+    // Keep a meaningful alpha ramp for natural anti-aliased edges and hair.
+    if(opaqueNeighbors>=5 && a<20) clean=Math.round(a*0.35);
+    if(clean<4) clean=0;
     dst.data[i+3]=Math.max(0,Math.min(255,clean));
   }
   ox.putImageData(dst,0,0); c.width=1;c.height=1; const outBlob=await canvasToBlob(out); out.width=1;out.height=1; return outBlob;
@@ -696,15 +756,21 @@ async function renderBackgroundComposite() {
     x.save(); x.filter=`blur(${Math.max(2,Math.round(w*.006))}px)`; x.globalAlpha=.55; x.drawImage(sc,Math.round(w*.018),Math.round(h*.035)); x.restore(); sc.width=1;sc.height=1;
   }
   x.save(); x.filter=`brightness(${adjustBrightness}%) contrast(${adjustContrast}%) saturate(${adjustSaturation}%)`; x.drawImage(subject,0,0); x.restore(); subject.close();
-  if(watermarkEnabled){
-    const fontSize=Math.max(14,Math.round(Math.min(w,h)*0.026));
-    const pad=Math.max(12,Math.round(Math.min(w,h)*0.028));
-    x.save(); x.font=`600 ${fontSize}px Inter, system-ui, sans-serif`; x.textAlign="right"; x.textBaseline="bottom"; x.globalAlpha=.72;
-    const label="Cutout Pro"; const tw=x.measureText(label).width;
-    x.fillStyle="rgba(255,255,255,.72)"; x.beginPath(); x.roundRect(w-pad-tw-18,h-pad-fontSize-10,tw+18,fontSize+10,10); x.fill();
-    x.fillStyle="rgba(35,45,52,.78)"; x.fillText(label,w-pad-9,h-pad-7); x.restore();
+  if(exportFormat === "jpeg"){
+    const bg=c.getContext("2d"); const image=bg.getImageData(0,0,c.width,c.height); const d=image.data;
+    for(let i=0;i<d.length;i+=4){ if(d[i+3]<255){d[i]=255;d[i+1]=255;d[i+2]=255;d[i+3]=255;} }
+    bg.putImageData(image,0,0);
   }
-  renderedExportBlob=await canvasToBlob(c); c.width=1;c.height=1;
+  if(exportSize!=="original"){
+    const [tw,th]=exportSize.split("x").map(Number); const out=document.createElement("canvas"); out.width=tw;out.height=th;
+    const ox=out.getContext("2d",{alpha:true}); if(exportFormat==="jpeg"){ox.fillStyle="#fff";ox.fillRect(0,0,tw,th);}
+    const scale=Math.min(tw/w,th/h), dw=Math.round(w*scale), dh=Math.round(h*scale); ox.drawImage(c,Math.round((tw-dw)/2),Math.round((th-dh)/2),dw,dh); c.width=1;c.height=1;
+    c.width=tw;c.height=th; const cx=c.getContext("2d",{alpha:true}); cx.drawImage(out,0,0); out.width=1;out.height=1;
+  }
+  const drawCtx=c.getContext("2d",{alpha:true});
+  if(watermarkEnabled){ drawCtx.save(); drawCtx.globalAlpha=.62; drawCtx.fillStyle=exportFormat==="jpeg"?"#26343a":"#ffffff"; drawCtx.font=`700 ${Math.max(14,Math.round(c.width*.018))}px system-ui`; drawCtx.textAlign="right"; drawCtx.textBaseline="bottom"; drawCtx.fillText("Cutout Pro",c.width-22,c.height-18); drawCtx.restore(); }
+  const mime=exportFormat==="jpeg"?"image/jpeg":exportFormat==="webp"?"image/webp":"image/png";
+  renderedExportBlob=await canvasToBlob(c,mime,exportFormat==="jpeg"||exportFormat==="webp"?0.92:undefined); c.width=1;c.height=1;
   revoke(renderedPreviewUrl); renderedPreviewUrl=URL.createObjectURL(renderedExportBlob);
   $("previewImg").src=renderedPreviewUrl;
 }
@@ -714,7 +780,7 @@ async function updateBackgroundMode(mode){ backgroundMode=mode; document.querySe
 function showError(message) {
   hide("editor"); show("processing"); $("processBadge").textContent = "SAFE RETRY"; $("processTitle").textContent = "The image was not completed"; $("processSub").textContent = message; $("tip").textContent = "Cutout Pro stopped the job instead of continuing to consume memory. Try a smaller image if the browser reports a resource limit."; $("bar").style.width = "0%";
 }
-function resetToUpload() { watermarkEnabled=false; jobToken++; busy = false; clearInterval(timerInt); revoke(resultUrl); resultUrl = null; revoke(renderedPreviewUrl); renderedPreviewUrl=null; renderedExportBlob=null; revoke(customBackgroundUrl); customBackgroundUrl=null; customBackgroundBlob=null; backgroundMode="checker"; shadowEnabled=false; backgroundBlur=14; shadowStrength=18; revoke(originalUrl); originalUrl = null; processingBlob = null; alphaBlob = null; enhancedSourceBlob = null; maskOriginalBlob = null; maskCanvas = null; maskCtx = null; maskLayerCanvas = null; maskLayerCtx = null; $("fileInput").value = ""; hide("processing"); hide("editor"); show("uploadView"); }
+function resetToUpload() { jobToken++; busy = false; clearInterval(timerInt); revoke(resultUrl); resultUrl = null; revoke(renderedPreviewUrl); renderedPreviewUrl=null; renderedExportBlob=null; revoke(customBackgroundUrl); customBackgroundUrl=null; customBackgroundBlob=null; backgroundMode="checker"; shadowEnabled=false; backgroundBlur=14; shadowStrength=18; revoke(originalUrl); originalUrl = null; processingBlob = null; alphaBlob = null; enhancedSourceBlob = null; maskOriginalBlob = null; maskCanvas = null; maskCtx = null; maskLayerCanvas = null; maskLayerCtx = null; $("fileInput").value = ""; hide("processing"); hide("editor"); show("uploadView"); }
 function applyZoom() { $("previewImg").style.transform = `scale(${zoom})`; $("originalImg").style.transform = `scale(${zoom})`; $("zoomText").textContent = Math.round(zoom * 100) + "%"; }
 
 $("choose").onclick = () => !busy && $("fileInput").click(); document.querySelectorAll(".tool-choice").forEach(b=>b.onclick=()=>setTool(b.dataset.tool)); setTool("remove");
@@ -724,16 +790,53 @@ $("processingNew").onclick = resetToUpload;
 ["dragleave", "drop"].forEach(x => $("dropzone").addEventListener(x, e => { e.preventDefault(); $("dropzone").classList.remove("drag"); }));
 $("dropzone").addEventListener("drop", e => { if (busy) return; const f = [...e.dataTransfer.files].find(x => x.type.startsWith("image/")); if (f) start(f); });
 
-document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(b=>b.onclick=async()=>{ document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(x=>x.classList.remove("active")); b.classList.add("active"); await updateBackgroundMode(b.dataset.quickBg); });
-function setPreviewMode(m){ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===m)); $("originalImg").style.display=m==="original"||m==="split"?"block":"none"; $("splitPane").style.display=m==="original"?"none":"block"; $("preview").classList.toggle("split",m==="split"); $("preview").dataset.mode=m; $("viewHint").textContent=m==="result"?"Your final cutout":m==="original"?"The uploaded photo":"Final vs original"; applyZoom(); }
+document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(b=>b.onclick=async()=>{ pushState(); document.querySelectorAll(".quick-btn[data-quick-bg]").forEach(x=>x.classList.remove("active")); b.classList.add("active"); await updateBackgroundMode(b.dataset.quickBg); });
+function setPreviewMode(m){ document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===m)); $("originalImg").style.display=m==="original"||m==="split"?"block":"none"; $("splitPane").style.display=m==="original"?"none":"block"; $("preview").classList.toggle("split",m==="split"); $("preview").dataset.mode=m; applyZoom(); }
+function updateCompareSlider(v){ $("preview").style.setProperty("--compare",v+"%"); }
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>setPreviewMode(b.dataset.mode));
 $("zoomIn").onclick = () => { zoom = Math.min(2, zoom + .1); applyZoom(); }; $("zoomOut").onclick = () => { zoom = Math.max(.5, zoom - .1); applyZoom(); };
 $("new").onclick = resetToUpload;
 
-async function openExportPreview(){ if(!resultBlob)return; await renderBackgroundComposite(); const blob=renderedExportBlob||resultBlob; const url=URL.createObjectURL(blob); $("exportImage").src=url; const info=await fileInfo(resultBlob); $("exportDimensions").textContent=`${info.width} × ${info.height}px`; $("exportFormat").textContent="PNG"; $("exportTransparency").textContent="Alpha ready"; $("exportPreview").classList.remove("hidden"); $("exportPreview").dataset.url=url; }
-async function confirmExport(){ if(!resultBlob)return; await renderBackgroundComposite(); const blob=renderedExportBlob||resultBlob; const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`cutout-pro-${activeTool}-${Date.now()}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); closeExportPreview(); }
-function closeExportPreview(){ const u=$("exportPreview").dataset.url; if(u)URL.revokeObjectURL(u); $("exportPreview").dataset.url=""; $("exportImage").src=""; $("exportPreview").classList.add("hidden"); }
-$("download").onclick = openExportPreview; $("exportConfirm").onclick=confirmExport; $("exportClose").onclick=closeExportPreview; $("exportCancel").onclick=closeExportPreview;
+async function openExportPreview(){
+  if(!resultBlob)return;
+  await renderBackgroundComposite();
+  const blob=renderedExportBlob||resultBlob;
+  const url=URL.createObjectURL(blob);
+  $("exportImage").src=url;
+  const info=await fileInfo(blob);
+  $("exportDimensions").textContent=`${info.width} × ${info.height}px`;
+  $("exportFormat").textContent=exportFormat.toUpperCase();
+  $("exportTransparency").textContent=exportFormat==="jpeg"?"Flattened":"Alpha ready";
+  $("exportPreview").classList.remove("hidden");
+  $("exportPreview").dataset.url=url;
+}
+async function confirmExport(){
+  if(!resultBlob)return;
+  await renderBackgroundComposite();
+  const blob=renderedExportBlob||resultBlob;
+  const ext=exportFormat==="jpeg"?"jpg":exportFormat;
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=`cutout-pro-${activeTool}-${Date.now()}.${ext}`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500); closeExportPreview();
+}
+async function copyResult(){
+  if(!resultBlob || !navigator.clipboard?.write || typeof ClipboardItem==="undefined")return;
+  await renderBackgroundComposite();
+  const blob=renderedExportBlob||resultBlob;
+  try{
+    await navigator.clipboard.write([new ClipboardItem({[blob.type]:blob})]);
+    const b=$("copyResult"),old=b.textContent;b.textContent="Copied ✓";setTimeout(()=>b.textContent=old,1200);
+  }catch(e){console.warn("Clipboard copy unavailable",e);}
+}
+function closeExportPreview(){
+  const u=$("exportPreview").dataset.url;if(u)URL.revokeObjectURL(u);
+  $("exportPreview").dataset.url="";$("exportImage").src="";$("exportPreview").classList.add("hidden");
+}
+$("download").onclick=openExportPreview;$("toolbarDownload").onclick=openExportPreview;
+$("exportConfirm").onclick=confirmExport;$("exportClose").onclick=closeExportPreview;$("exportCancel").onclick=closeExportPreview;$("copyResult").onclick=copyResult;
+$("exportSize").onchange=async e=>{exportSize=e.target.value;await renderBackgroundComposite();if(!$("exportPreview").classList.contains("hidden")){const u=$("exportPreview").dataset.url;if(u)URL.revokeObjectURL(u);const nu=URL.createObjectURL(renderedExportBlob);$("exportImage").src=nu;$("exportPreview").dataset.url=nu;}};
+$("exportFormatSelect").onchange=async e=>{exportFormat=e.target.value;await renderBackgroundComposite();if(!$("exportPreview").classList.contains("hidden")){const u=$("exportPreview").dataset.url;if(u)URL.revokeObjectURL(u);const nu=URL.createObjectURL(renderedExportBlob);$("exportImage").src=nu;$("exportPreview").dataset.url=nu;}$("exportFormat").textContent=exportFormat.toUpperCase();$("exportTransparency").textContent=exportFormat==="jpeg"?"Flattened":"Alpha ready";};
+$("watermarkToggle").onchange=async e=>{watermarkEnabled=e.target.checked;await renderBackgroundComposite();if(!$("exportPreview").classList.contains("hidden")){const u=$("exportPreview").dataset.url;if(u)URL.revokeObjectURL(u);const nu=URL.createObjectURL(renderedExportBlob);$("exportImage").src=nu;$("exportPreview").dataset.url=nu;}};
 
 document.querySelectorAll(".mask-tool").forEach(b=>b.onclick=async()=>{ document.querySelectorAll(".mask-tool").forEach(x=>x.classList.remove("active")); b.classList.add("active"); maskTool=b.dataset.maskTool; await renderMaskPreview(); $("maskCanvas").classList.toggle("mask-only",maskTool==="mask"); });
 $("brushSize").oninput=e=>$("brushSizeValue").textContent=`${e.target.value} px`;
@@ -743,9 +846,9 @@ $("maskCanvas").addEventListener("pointermove",e=>{ const r=e.currentTarget.getB
 $("maskCanvas").addEventListener("pointerup",e=>{maskPainting=false;try{e.currentTarget.releasePointerCapture(e.pointerId)}catch{}}); $("maskCanvas").addEventListener("pointerleave",()=>{maskPainting=false;$("maskCursor").hidden=true;});
 $("maskApply").onclick=applyMaskCorrection; $("maskReset").onclick=resetMaskEditor;
 document.querySelectorAll(".background-option").forEach(b=>b.onclick=()=>updateBackgroundMode(b.dataset.background));
-$("shadowToggle").onchange=e=>{shadowEnabled=e.target.checked;renderBackgroundComposite();};
-$("shadowStrength").oninput=e=>{$("shadowValue").textContent=`${e.target.value}%`;shadowStrength=Number(e.target.value);if(shadowEnabled)renderBackgroundComposite();};
-$("blurStrength").oninput=e=>{$("blurValue").textContent=`${e.target.value} px`;backgroundBlur=Number(e.target.value);if(backgroundMode==="blur"||backgroundMode==="custom")renderBackgroundComposite();};
+$("shadowToggle").onchange=e=>{pushState();shadowEnabled=e.target.checked;renderBackgroundComposite();};
+$("shadowStrength").oninput=e=>{pushState();$("shadowValue").textContent=`${e.target.value}%`;shadowStrength=Number(e.target.value);if(shadowEnabled)renderBackgroundComposite();};
+$("blurStrength").oninput=e=>{pushState();$("blurValue").textContent=`${e.target.value} px`;backgroundBlur=Number(e.target.value);if(backgroundMode==="blur"||backgroundMode==="custom")renderBackgroundComposite();};
 $("customBackgroundButton").onclick=()=>$("customBackgroundInput").click();
 $("customBackgroundInput").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>MAX_SOURCE_MB*1024*1024){showError("That background image is larger than 25 MB. Choose a smaller image.");return;}revoke(customBackgroundUrl);customBackgroundBlob=f;customBackgroundUrl=URL.createObjectURL(f);await updateBackgroundMode("custom");};
 
@@ -760,27 +863,39 @@ function setEditorTool(tool){
 }
 document.querySelectorAll(".studio-tool").forEach(b=>b.onclick=()=>setEditorTool(b.dataset.editorTool));
 $("compareTool").onclick=()=>setPreviewMode("split");
-$("toolbarDownload").onclick=openExportPreview;
-$("undoTool").onclick=undoMask; $("redoTool").onclick=redoMask; updateHistoryButtons();
-function updateAdjust(){ [$("brightnessValue"),$("contrastValue"),$("saturationValue")].forEach((o,i)=>o.textContent=[adjustBrightness,adjustContrast,adjustSaturation][i]+"%"); renderBackgroundComposite(); }
-$("brightnessControl").oninput=e=>{adjustBrightness=Number(e.target.value);updateAdjust();};
-$("contrastControl").oninput=e=>{adjustContrast=Number(e.target.value);updateAdjust();};
-$("saturationControl").oninput=e=>{adjustSaturation=Number(e.target.value);updateAdjust();};
+$("undoTool").onclick=()=>stateHistory.length>1?undoState():undoMask(); $("redoTool").onclick=()=>stateRedo.length?redoState():redoMask(); stateHistory=[snapshotState()]; updateHistoryButtons();
+function updateAdjust(){ updateAdjustLabels(); renderBackgroundComposite(); }
+$("brightnessControl").setAttribute("aria-label","Brightness");$("contrastControl").setAttribute("aria-label","Contrast");$("saturationControl").setAttribute("aria-label","Saturation");$("brushSize").setAttribute("aria-label","Brush size");$("edgeSoftness").setAttribute("aria-label","Edge softness");$("brightnessControl").oninput=e=>{pushState();adjustBrightness=Number(e.target.value);updateAdjust();};
+$("contrastControl").oninput=e=>{pushState();adjustContrast=Number(e.target.value);updateAdjust();};
+$("saturationControl").oninput=e=>{pushState();adjustSaturation=Number(e.target.value);updateAdjust();};
 $("resetAdjust").onclick=()=>{adjustBrightness=adjustContrast=adjustSaturation=100;["brightnessControl","contrastControl","saturationControl"].forEach(id=>$(id).value=100);updateAdjust();};
-$("effectShadowToggle").onchange=e=>{$("shadowToggle").checked=e.target.checked;shadowEnabled=e.target.checked;renderBackgroundComposite();};
-$("effectShadowStrength").oninput=e=>{$("shadowStrength").value=e.target.value;shadowStrength=Number(e.target.value);$("effectShadowValue").textContent=e.target.value+"%";if(shadowEnabled)renderBackgroundComposite();};
+$("effectShadowToggle").onchange=e=>{pushState();$("shadowToggle").checked=e.target.checked;shadowEnabled=e.target.checked;renderBackgroundComposite();};
+$("effectShadowStrength").oninput=e=>{pushState();$("shadowStrength").value=e.target.value;shadowStrength=Number(e.target.value);$("effectShadowValue").textContent=e.target.value+"%";if(shadowEnabled)renderBackgroundComposite();};
 $("effectBlurStrength").oninput=e=>{$("blurStrength").value=e.target.value;backgroundBlur=Number(e.target.value);$("effectBlurValue").textContent=e.target.value+" px";if(backgroundMode==="blur"||backgroundMode==="custom")renderBackgroundComposite();};
 document.querySelectorAll(".design-choice").forEach(b=>b.onclick=async()=>{document.querySelectorAll(".design-choice").forEach(x=>x.classList.remove("active"));b.classList.add("active");await updateBackgroundMode(b.dataset.designBg);});
+$("batchChoose").onclick=()=>$("batchInput").click();
+$("batchInput").onchange=async e=>{
+  const files=[...e.target.files].filter(f=>f.type.startsWith("image/")).slice(0,20);
+  if(!files.length)return;
+  batchQueue=files; batchOutputs=[]; batchMode=true;
+  for(let i=0;i<files.length;i++){
+    $("processBadge").textContent=`BATCH ${i+1}/${files.length}`;
+    await start(files[i]);
+    if(resultBlob){ await renderBackgroundComposite(); batchOutputs.push({name:files[i].name,blob:renderedExportBlob||resultBlob}); }
+  }
+  const zip=new JSZip();
+  batchOutputs.forEach(o=>zip.file(o.name.replace(/\.[^.]+$/,"")+".png",o.blob));
+  const out=await zip.generateAsync({type:"blob",compression:"DEFLATE"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(out);a.download=`cutout-pro-batch-${Date.now()}.zip`;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+  batchQueue=[];batchOutputs=[];batchMode=false;e.target.value="";
+};
+$("presetSelect").onchange=e=>applyPreset(e.target.value);$("savePreset").onclick=savePreset;$("deletePreset").onclick=deletePreset;updatePresetList();
+window.addEventListener("keydown",e=>{
+  if(e.ctrlKey&&e.key.toLowerCase()==="z"){e.preventDefault();$("undoTool").click();}
+  else if(e.ctrlKey&&(e.key.toLowerCase()==="y"||(e.shiftKey&&e.key.toLowerCase()==="z"))){e.preventDefault();$("redoTool").click();}
+  else if((e.key==="["||e.key==="]")&&!e.target.matches("input,textarea,select,button")){const r=$("brushSize");r.value=Math.max(+r.min,Math.min(+r.max,+r.value+(e.key==="]"?4:-4)));r.dispatchEvent(new Event("input"));}
+  else if(e.code==="Space"&&!e.target.matches("input,textarea,select,button")){e.preventDefault();$("previewImg").style.opacity=".01";}
+});
+window.addEventListener("keyup",e=>{if(e.code==="Space")$("previewImg").style.opacity="1";});
 $("theme").onclick = () => document.documentElement.classList.toggle("dark");
-
-function syncWatermarkUI(){
-  const on=!!watermarkEnabled;
-  const wt=$("watermarkToggle"), ew=$("exportWatermarkToggle"), q=$("watermarkQuick");
-  if(wt) wt.checked=on; if(ew) ew.checked=on;
-  if(q){ q.classList.toggle("active",on); q.querySelector("span").textContent=on?"ON":"OFF"; }
-  document.querySelectorAll(".export-toggle-card em").forEach(e=>e.textContent=on?"ON":"OFF");
-}
-$("watermarkToggle").onchange=e=>{watermarkEnabled=e.target.checked;syncWatermarkUI();renderBackgroundComposite();};
-$("exportWatermarkToggle").onchange=e=>{watermarkEnabled=e.target.checked;syncWatermarkUI();renderBackgroundComposite();openExportPreview();};
-$("watermarkQuick").onclick=()=>{watermarkEnabled=!watermarkEnabled;syncWatermarkUI();renderBackgroundComposite();};
-syncWatermarkUI();
